@@ -1,9 +1,10 @@
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
-    iter::repeat,
+    iter::{once, repeat},
     marker::PhantomData,
 };
 
+#[derive(Debug)]
 pub struct RecSplit<T: Hash> {
     _phantom: PhantomData<T>,
     tree: SplittingTree,
@@ -12,11 +13,20 @@ pub struct RecSplit<T: Hash> {
 pub type HashInt = u64;
 
 impl<T: Hash> RecSplit<T> {
-    pub fn new(leaf_size: usize, tree_arity: usize, values: &[T]) -> Self {
-        debug_assert!(leaf_size >= tree_arity);
+    /// `leaf_size` must be in `1..=24`.
+    pub fn new(leaf_size: usize, values: &[T]) -> Self {
+        debug_assert!((1..=24).contains(&leaf_size));
+
+        let size = values.len();
+        let mut values = values.iter().collect::<Vec<_>>();
+
         Self {
             _phantom: PhantomData,
-            tree: construct_splitting_tree(leaf_size, values, repeat(0)), // todo
+            tree: construct_splitting_tree(
+                leaf_size,
+                &mut values,
+                construct_splitting_strategy(leaf_size, size),
+            ),
         }
     }
 
@@ -33,11 +43,34 @@ impl<T: Hash> RecSplit<T> {
     }
 }
 
-/// `splitting units`: list of _ordinary_ sizes of buckets in each layer.
+fn construct_splitting_strategy(
+    leaf_size: usize,
+    size: usize,
+) -> impl Iterator<Item = usize> + Clone {
+    let last_split_degree = 2.max((0.35 * leaf_size as f32 + 0.5).ceil() as usize);
+    let second_last_degree = if leaf_size >= 7 {
+        (0.21 * leaf_size as f32 + 0.9).ceil() as usize
+    } else {
+        2
+    };
+
+    let subtrees_to_cover = size.div_ceil(last_split_degree * second_last_degree * leaf_size);
+    let num_2_layers = subtrees_to_cover
+        .next_power_of_two()
+        .checked_ilog2()
+        .unwrap_or_default() as usize;
+
+    repeat(2)
+        .take(num_2_layers)
+        .chain(once(second_last_degree))
+        .chain(once(last_split_degree))
+}
+
+/// `splitting_strategy`: list of _ordinary_ sizes of buckets in each layer.
 fn construct_splitting_tree<T: Hash>(
     leaf_size: usize,
-    values: &[T],
-    mut splitting_units: impl Iterator<Item = usize>,
+    values: &mut [&T],
+    mut splitting_strategy: impl Iterator<Item = usize> + Clone,
 ) -> SplittingTree {
     if values.len() <= leaf_size {
         let split = vec![1; values.len()];
@@ -46,14 +79,22 @@ fn construct_splitting_tree<T: Hash>(
     }
 
     let size = values.len();
-    let split_unit = splitting_units.next().expect("splitting unit");
+    let split_unit = splitting_strategy.next().expect("splitting unit");
     let mut split = vec![split_unit; size.div_ceil(split_unit)];
     *split.last_mut().expect("no empty tree") -= split_unit * split.len() - size;
 
     let seed = find_split_seed(&split, values);
-    todo!();
+    values.sort_unstable_by_key(|v| hash_with_seed(seed, size as u64, v));
+
+    let children: Vec<_> = values
+        .chunks_mut(split_unit)
+        .map(|chunk| construct_splitting_tree(leaf_size, &mut *chunk, splitting_strategy.clone()))
+        .collect();
+
+    SplittingTree::Inner(seed, children)
 }
 
+#[derive(Debug)]
 enum SplittingTree {
     Inner(HashInt, Vec<SplittingTree>),
     Leaf(HashInt),
@@ -123,7 +164,7 @@ fn get_hash_bucket(hash: HashInt, splits: &[usize]) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use crate::{find_split_seed, get_hash_bucket};
+    use crate::{construct_splitting_strategy, find_split_seed, get_hash_bucket};
 
     #[test]
     fn test_bucket_index() {
@@ -150,5 +191,23 @@ mod tests {
         let values = (0..SIZE).collect::<Vec<_>>();
         let split = [1; SIZE];
         assert_eq!(43, find_split_seed(&split, &values))
+    }
+
+    #[test]
+    fn test_construct_strategy() {
+        let max_leaf_size = 24;
+
+        for size in (0..1000).step_by(100).skip(1) {
+            for leaf_size in 1..max_leaf_size.min(size) {
+                assert!(
+                    construct_splitting_strategy(leaf_size, size).product::<usize>() * leaf_size
+                        >= size
+                );
+            }
+        }
+        // assert_eq!(
+        //     construct_splitting_strategy(leaf_size, size).collect::<Vec<_>>(),
+        //     &[]
+        // );
     }
 }
