@@ -73,21 +73,27 @@ fn construct_splitting_tree<T: Hash>(
     mut splitting_strategy: impl Iterator<Item = usize> + Clone,
 ) -> SplittingTree {
     if values.len() <= leaf_size {
+        println!("constructing leaf node of size {}", values.len());
         let split = vec![1; values.len()];
-        let hash = find_split_seed(&split, values);
-        return SplittingTree::Leaf(hash);
+        let seed = find_split_seed(&split, values);
+        println!("\tsplit with seed {seed}");
+        return SplittingTree::Leaf(seed);
     }
 
     let size = values.len();
-    let split_unit = splitting_strategy.next().expect("splitting unit");
-    let mut split = vec![split_unit; size.div_ceil(split_unit)];
-    *split.last_mut().expect("no empty tree") -= split_unit * split.len() - size;
+    let split_degree = splitting_strategy.next().expect("splitting unit");
+    println!("constructing inner node for {size} values and splitting degree {split_degree}");
+
+    let expected_child_size = size.div_ceil(split_degree);
+    let mut split = vec![expected_child_size; split_degree];
+    *split.last_mut().expect("no empty tree") -= expected_child_size * split_degree - size;
 
     let seed = find_split_seed(&split, values);
+    println!("\tsplit with seed {seed}");
     values.sort_unstable_by_key(|v| hash_with_seed(seed, size as u64, v));
 
     let children: Vec<_> = values
-        .chunks_mut(split_unit)
+        .chunks_mut(expected_child_size)
         .map(|chunk| construct_splitting_tree(leaf_size, &mut *chunk, splitting_strategy.clone()))
         .collect();
 
@@ -111,7 +117,7 @@ fn hash_with_seed<T: Hash>(seed: HashInt, max: HashInt, value: T) -> HashInt {
 /// require: sum of splits == values.len()
 fn find_split_seed<T: Hash>(split: &[usize], values: &[T]) -> HashInt {
     for i in 0..HashInt::MAX {
-        if i % 10000 == 0 {
+        if i % 10000 == 0 && i != 0 {
             println!("finding seed: iteration {i}");
         }
 
@@ -164,7 +170,7 @@ fn get_hash_bucket(hash: HashInt, splits: &[usize]) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use crate::{construct_splitting_strategy, find_split_seed, get_hash_bucket};
+    use crate::{construct_splitting_strategy, find_split_seed, get_hash_bucket, RecSplit};
 
     #[test]
     fn test_bucket_index() {
@@ -209,5 +215,12 @@ mod tests {
         //     construct_splitting_strategy(leaf_size, size).collect::<Vec<_>>(),
         //     &[]
         // );
+    }
+
+    #[test]
+    fn test_tree() {
+        let values = (0..100).collect::<Vec<_>>();
+        let tree = RecSplit::new(10, &values);
+        println!("{tree:?}");
     }
 }
