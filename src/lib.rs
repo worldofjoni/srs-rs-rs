@@ -8,6 +8,7 @@ use std::{
 pub struct RecSplit<T: Hash> {
     _phantom: PhantomData<T>,
     tree: SplittingTree,
+    size: usize,
 }
 
 pub type HashInt = u64;
@@ -27,7 +28,12 @@ impl<T: Hash> RecSplit<T> {
                 &mut values,
                 construct_splitting_strategy(leaf_size, size),
             ),
+            size,
         }
+    }
+
+    pub fn get_size(&self) -> usize {
+        self.size
     }
 
     pub fn hash(&self, value: &T) -> HashInt {
