@@ -1,7 +1,12 @@
 [package]
 name = "recsplit"
+authors = ["Jonatan Ziegler"]
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "RecSplit minimal perfect hash function"
+repository = "https://github.com/worldofjoni/RecSplit"
+keywords = ["hashing", "mphf", "perfect-hash", "perfect"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
