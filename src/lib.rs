@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     hash::{DefaultHasher, Hash, Hasher},
     iter::{once, repeat},
     marker::PhantomData,
@@ -11,7 +12,8 @@ pub struct RecSplit<T: Hash> {
 }
 
 impl<T: Hash> RecSplit<T> {
-    /// `leaf_size` must be in `1..=24`.
+    /// `leaf_size` must be in `1..=24`.\
+    /// `values` must be **distinct**, that is they _can_ produce unique hashes.
     pub fn new(leaf_size: usize, values: &[T]) -> Self {
         debug_assert!((1..=24).contains(&leaf_size));
 
