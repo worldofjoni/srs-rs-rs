@@ -8,10 +8,7 @@ use std::{
 pub struct RecSplit<T: Hash> {
     _phantom: PhantomData<T>,
     tree: SplittingTree,
-    size: usize,
 }
-
-pub type HashInt = u64;
 
 impl<T: Hash> RecSplit<T> {
     /// `leaf_size` must be in `1..=24`.
@@ -28,16 +25,16 @@ impl<T: Hash> RecSplit<T> {
                 &mut values,
                 construct_splitting_strategy(leaf_size, size),
             ),
-            size,
         }
     }
 
-    pub fn get_size(&self) -> usize {
-        self.size
+    pub fn size(&self) -> usize {
+        self.tree.get_size()
     }
 
-    pub fn hash(&self, value: &T) -> HashInt {
-        todo!()
+    /// ensures result in `0..self.get_size()`
+    pub fn hash(&self, value: &T) -> usize {
+        hash_with_tree(&self.tree, value)
     }
 
     pub fn serialize(&self) -> Box<[u8]> {
@@ -46,6 +43,18 @@ impl<T: Hash> RecSplit<T> {
 
     pub fn deserialize(bytes: &[u8]) -> Option<Self> {
         todo!()
+    }
+}
+
+fn hash_with_tree<T: Hash>(tree: &SplittingTree, value: &T) -> usize {
+    match tree {
+        SplittingTree::Inner(seed, subtrees, _) => {
+            let bucket = hash_with_seed(*seed, subtrees.len(), value);
+            let offset: usize = subtrees.iter().take(bucket).map(|t| t.get_size()).sum();
+
+            offset + hash_with_tree(&subtrees[bucket], value)
+        }
+        SplittingTree::Leaf(seed, size) => hash_with_seed(*seed, *size, value),
     }
 }
 
@@ -78,15 +87,15 @@ fn construct_splitting_tree<T: Hash>(
     values: &mut [&T],
     mut splitting_strategy: impl Iterator<Item = usize> + Clone,
 ) -> SplittingTree {
-    if values.len() <= leaf_size {
-        println!("constructing leaf node of size {}", values.len());
-        let split = vec![1; values.len()];
+    let size = values.len();
+    if size <= leaf_size {
+        println!("constructing leaf node of size {}", size);
+        let split = vec![1; size];
         let seed = find_split_seed(&split, values);
         println!("\tsplit with seed {seed}");
-        return SplittingTree::Leaf(seed);
+        return SplittingTree::Leaf(seed, size);
     }
 
-    let size = values.len();
     let split_degree = splitting_strategy.next().expect("splitting unit");
     println!("constructing inner node for {size} values and splitting degree {split_degree}");
 
@@ -96,33 +105,42 @@ fn construct_splitting_tree<T: Hash>(
 
     let seed = find_split_seed(&split, values);
     println!("\tsplit with seed {seed}");
-    values.sort_unstable_by_key(|v| hash_with_seed(seed, size as u64, v));
+    values.sort_unstable_by_key(|v| hash_with_seed(seed, size, v));
 
     let children: Vec<_> = values
         .chunks_mut(expected_child_size)
         .map(|chunk| construct_splitting_tree(leaf_size, &mut *chunk, splitting_strategy.clone()))
         .collect();
 
-    SplittingTree::Inner(seed, children)
+    SplittingTree::Inner(seed, children, size)
 }
 
 #[derive(Debug)]
 enum SplittingTree {
-    Inner(HashInt, Vec<SplittingTree>),
-    Leaf(HashInt),
+    Inner(usize, Vec<SplittingTree>, usize),
+    Leaf(usize, usize),
+}
+
+impl SplittingTree {
+    fn get_size(&self) -> usize {
+        *match self {
+            SplittingTree::Inner(_, _, size) => size,
+            SplittingTree::Leaf(_, size) => size,
+        }
+    }
 }
 
 /// Hashes `value` with hash function Phi_`seed`^`max`, that is each hash is in range [0,`max`).
-fn hash_with_seed<T: Hash>(seed: HashInt, max: HashInt, value: T) -> HashInt {
+fn hash_with_seed<T: Hash>(seed: usize, max: usize, value: &T) -> usize {
     let mut hasher = DefaultHasher::new();
-    hasher.write_u64(seed);
+    hasher.write_usize(seed);
     value.hash(&mut hasher);
-    hasher.finish() % max
+    hasher.finish() as usize % max
 }
 
 /// require: sum of splits == values.len()
-fn find_split_seed<T: Hash>(split: &[usize], values: &[T]) -> HashInt {
-    for i in 0..HashInt::MAX {
+fn find_split_seed<T: Hash>(split: &[usize], values: &[T]) -> usize {
+    for i in 0..usize::MAX {
         if i % 10000 == 0 && i != 0 {
             println!("finding seed: iteration {i}");
         }
@@ -135,17 +153,17 @@ fn find_split_seed<T: Hash>(split: &[usize], values: &[T]) -> HashInt {
 }
 
 /// `split` is list of length of splitting sections, must sum up to `values.len()`
-fn is_split<T: Hash>(seed: HashInt, splits: &[usize], values: &[T]) -> bool {
-    let max_seed = values.len();
+fn is_split<T: Hash>(seed: usize, splits: &[usize], values: &[T]) -> bool {
+    let size = values.len();
     debug_assert_eq!(
-        max_seed,
+        size,
         splits.iter().sum(),
         "splits did not sum up to number of values"
     );
     let mut num_in_splits = vec![0; splits.len()];
 
     for val in values {
-        let hash = hash_with_seed(seed, max_seed as HashInt, val); // todo: avoid `as`
+        let hash = hash_with_seed(seed, size, val);
         let bucket_idx = get_hash_bucket(hash, splits);
         num_in_splits[bucket_idx] += 1;
     }
@@ -157,8 +175,8 @@ fn is_split<T: Hash>(seed: HashInt, splits: &[usize], values: &[T]) -> bool {
         .all(|(num, split)| *num == *split)
 }
 
-fn get_hash_bucket(hash: HashInt, splits: &[usize]) -> usize {
-    debug_assert!((hash as usize) < splits.iter().sum());
+fn get_hash_bucket(hash: usize, splits: &[usize]) -> usize {
+    debug_assert!(hash < splits.iter().sum());
     for (bucked_idx, bucket_max) in splits
         .iter()
         .scan(0usize, |a, b| {
@@ -167,7 +185,7 @@ fn get_hash_bucket(hash: HashInt, splits: &[usize]) -> usize {
         })
         .enumerate()
     {
-        if (hash as usize) < bucket_max {
+        if (hash) < bucket_max {
             return bucked_idx;
         }
     }
@@ -176,7 +194,13 @@ fn get_hash_bucket(hash: HashInt, splits: &[usize]) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use crate::{construct_splitting_strategy, find_split_seed, get_hash_bucket, RecSplit};
+    use std::collections::{HashMap, HashSet};
+
+    use rand::random;
+
+    use crate::{
+        construct_splitting_strategy, find_split_seed, get_hash_bucket, hash_with_seed, RecSplit,
+    };
 
     #[test]
     fn test_bucket_index() {
@@ -224,9 +248,59 @@ mod tests {
     }
 
     #[test]
-    fn test_tree() {
+    fn test_find_split() {
+        for split in 2..5 {
+            let single_size = 1000;
+            let splits = vec![single_size; split];
+            let size = single_size * split;
+            let values = (0..size).map(|_| random::<usize>()).collect::<Vec<_>>();
+            let seed = find_split_seed(&splits, &values);
+
+            let mut result = vec![0; values.len()];
+            values
+                .iter()
+                .for_each(|v| result[hash_with_seed(seed, size, &v)] += 1);
+            assert!(
+                result.iter().all(|a| *a == 1),
+                "failed for split in {split} with values {values:?} and result {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_single_tree() {
         let values = (0..100).collect::<Vec<_>>();
         let tree = RecSplit::new(10, &values);
         println!("{tree:?}");
+
+        let set = (0..tree.size())
+            .map(|i| tree.hash(&i))
+            .collect::<HashSet<_>>();
+        let mut histogram = HashMap::new();
+
+        (0..tree.size()).for_each(|i| *histogram.entry(tree.hash(&i)).or_insert(0) += 1);
+        println!("histogram: {histogram:?}");
+
+        assert_eq!(set.len(), values.len());
+        assert_eq!(set, (0..tree.size()).collect());
+    }
+
+    #[test]
+    fn test_many_tree() {
+        for i in 0..1000 {
+            let size = i;
+            let leaf_size = 15;
+            let values = (0..size)
+                .map(|_| rand::random::<usize>())
+                .collect::<Vec<_>>();
+            let mphf = RecSplit::new(leaf_size, &values);
+
+            let mut results = vec![0; size];
+            values.iter().for_each(|v| results[mphf.hash(v)] += 1);
+            assert!(
+                results.iter().all(|v| *v == 1),
+                "failed in {i} for {values:?} with {results:?}"
+            );
+        }
     }
 }
