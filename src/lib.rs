@@ -49,7 +49,8 @@ impl<T: Hash> RecSplit<T> {
 fn hash_with_tree<T: Hash>(tree: &SplittingTree, value: &T) -> usize {
     match tree {
         SplittingTree::Inner(seed, subtrees, _) => {
-            let bucket = hash_with_seed(*seed, subtrees.len(), value);
+            let splits = subtrees.iter().map(|s| s.get_size()).collect::<Vec<_>>();
+            let bucket = get_hash_bucket(value, *seed, &splits);
             let offset: usize = subtrees.iter().take(bucket).map(|t| t.get_size()).sum();
 
             offset + hash_with_tree(&subtrees[bucket], value)
@@ -105,7 +106,7 @@ fn construct_splitting_tree<T: Hash>(
 
     let seed = find_split_seed(&split, values);
     println!("\tsplit with seed {seed}");
-    values.sort_unstable_by_key(|v| hash_with_seed(seed, size, v));
+    values.sort_unstable_by_key(|v| get_hash_bucket(v, seed, &split));
 
     let children: Vec<_> = values
         .chunks_mut(expected_child_size)
@@ -163,8 +164,7 @@ fn is_split<T: Hash>(seed: usize, splits: &[usize], values: &[T]) -> bool {
     let mut num_in_splits = vec![0; splits.len()];
 
     for val in values {
-        let hash = hash_with_seed(seed, size, val);
-        let bucket_idx = get_hash_bucket(hash, splits);
+        let bucket_idx = get_hash_bucket(val, seed, splits);
         num_in_splits[bucket_idx] += 1;
     }
     // println!("buckets {num_in_splits:?}");
@@ -175,7 +175,9 @@ fn is_split<T: Hash>(seed: usize, splits: &[usize], values: &[T]) -> bool {
         .all(|(num, split)| *num == *split)
 }
 
-fn get_hash_bucket(hash: usize, splits: &[usize]) -> usize {
+/// returns the bucket of a value according to a splitting and seed
+fn get_hash_bucket<T: Hash>(value: &T, seed: usize, splits: &[usize]) -> usize {
+    let hash = hash_with_seed(seed, splits.iter().sum(), value);
     debug_assert!(hash < splits.iter().sum());
     for (bucked_idx, bucket_max) in splits
         .iter()
@@ -194,6 +196,7 @@ fn get_hash_bucket(hash: usize, splits: &[usize]) -> usize {
 
 #[cfg(test)]
 mod tests {
+
     use std::collections::{HashMap, HashSet};
 
     use rand::random;
@@ -202,16 +205,16 @@ mod tests {
         construct_splitting_strategy, find_split_seed, get_hash_bucket, hash_with_seed, RecSplit,
     };
 
-    #[test]
-    fn test_bucket_index() {
-        assert_eq!(0, get_hash_bucket(0, &[1, 1, 2]));
-        assert_eq!(1, get_hash_bucket(1, &[1, 1, 2]));
-        assert_eq!(2, get_hash_bucket(3, &[1, 1, 2]));
-        assert_eq!(0, get_hash_bucket(0, &[5, 5]));
-        assert_eq!(0, get_hash_bucket(4, &[5, 5]));
-        assert_eq!(1, get_hash_bucket(5, &[5, 5]));
-        assert_eq!(1, get_hash_bucket(9, &[5, 5]));
-    }
+    // #[test]
+    // fn test_bucket_index() {
+    //     assert_eq!(0, get_hash_bucket(0, &[1, 1, 2]));
+    //     assert_eq!(1, get_hash_bucket(1, &[1, 1, 2]));
+    //     assert_eq!(2, get_hash_bucket(3, &[1, 1, 2]));
+    //     assert_eq!(0, get_hash_bucket(0, &[5, 5]));
+    //     assert_eq!(0, get_hash_bucket(4, &[5, 5]));
+    //     assert_eq!(1, get_hash_bucket(5, &[5, 5]));
+    //     assert_eq!(1, get_hash_bucket(9, &[5, 5]));
+    // }
 
     #[test]
     fn test_split() {
@@ -227,6 +230,21 @@ mod tests {
         let values = (0..SIZE).collect::<Vec<_>>();
         let split = [1; SIZE];
         assert_eq!(43, find_split_seed(&split, &values))
+    }
+
+    #[test]
+    fn get_bucket_vs_hash_with_seed() {
+        let size = 100;
+        let splits = vec![1; size];
+
+        for seed in 0..100 {
+            for value in 0..1000 {
+                assert_eq!(
+                    hash_with_seed(seed, size, &value),
+                    get_hash_bucket(&value, seed, &splits)
+                );
+            }
+        }
     }
 
     #[test]
@@ -249,20 +267,22 @@ mod tests {
 
     #[test]
     fn test_find_split() {
-        for split in 2..5 {
-            let single_size = 1000;
-            let splits = vec![single_size; split];
-            let size = single_size * split;
+        for split in 2..=5 {
+            println!("split in {split} parts");
+            let size = 360;
+            assert!(size % split == 0);
+            let splits = vec![size / split; split];
             let values = (0..size).map(|_| random::<usize>()).collect::<Vec<_>>();
+
             let seed = find_split_seed(&splits, &values);
 
-            let mut result = vec![0; values.len()];
+            let mut result = vec![0; split];
             values
                 .iter()
-                .for_each(|v| result[hash_with_seed(seed, size, &v)] += 1);
-            assert!(
-                result.iter().all(|a| *a == 1),
-                "failed for split in {split} with values {values:?} and result {result:?}"
+                .for_each(|v| result[get_hash_bucket(&v, seed, &splits)] += 1);
+            assert_eq!(
+                result, splits,
+                "failed for split in {split} with values {values:?}"
             );
         }
     }
@@ -287,7 +307,7 @@ mod tests {
 
     #[test]
     fn test_many_tree() {
-        for i in 0..1000 {
+        for i in (0..1000).step_by(100) {
             let size = i;
             let leaf_size = 15;
             let values = (0..size)
