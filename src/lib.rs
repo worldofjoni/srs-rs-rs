@@ -1,9 +1,12 @@
+use core::num;
 use std::{
     collections::HashSet,
     hash::{DefaultHasher, Hash, Hasher},
     iter::{once, repeat},
     marker::PhantomData,
 };
+
+use log::debug;
 
 #[derive(Debug)]
 pub struct RecSplit<T: Hash> {
@@ -92,22 +95,22 @@ fn construct_splitting_tree<T: Hash>(
 ) -> SplittingTree {
     let size = values.len();
     if size <= leaf_size {
-        println!("constructing leaf node of size {}", size);
+        debug!("constructing leaf node of size {}", size);
         let split = vec![1; size];
         let seed = find_split_seed(&split, values);
-        println!("\tsplit with seed {seed}");
+        debug!("\tsplit with seed {seed}");
         return SplittingTree::Leaf(seed, size);
     }
 
     let split_degree = splitting_strategy.next().expect("splitting unit");
-    println!("constructing inner node for {size} values and splitting degree {split_degree}");
+    debug!("constructing inner node for {size} values and splitting degree {split_degree}");
 
     let expected_child_size = size.div_ceil(split_degree);
     let mut split = vec![expected_child_size; split_degree];
     *split.last_mut().expect("no empty tree") -= expected_child_size * split_degree - size;
 
     let seed = find_split_seed(&split, values);
-    println!("\tsplit with seed {seed}");
+    debug!("\tsplit with seed {seed}");
     values.sort_unstable_by_key(|v| get_hash_bucket(v, seed, &split));
 
     let children: Vec<_> = values
@@ -145,7 +148,7 @@ fn hash_with_seed<T: Hash>(seed: usize, max: usize, value: &T) -> usize {
 fn find_split_seed<T: Hash>(split: &[usize], values: &[T]) -> usize {
     for i in 0..usize::MAX {
         if i % 10000 == 0 && i != 0 {
-            println!("finding seed: iteration {i}");
+            debug!("finding seed: iteration {i}");
         }
 
         if is_split(i, split, values) {
@@ -160,7 +163,7 @@ fn is_split<T: Hash>(seed: usize, splits: &[usize], values: &[T]) -> bool {
     let size = values.len();
     debug_assert_eq!(
         size,
-        splits.iter().sum(),
+        splits.iter().sum::<usize>(),
         "splits did not sum up to number of values"
     );
     let mut num_in_splits = vec![0; splits.len()];
@@ -169,12 +172,9 @@ fn is_split<T: Hash>(seed: usize, splits: &[usize], values: &[T]) -> bool {
         let bucket_idx = get_hash_bucket(val, seed, splits);
         num_in_splits[bucket_idx] += 1;
     }
-    // println!("buckets {num_in_splits:?}");
+    // debug!("buckets {num_in_splits:?}");
 
-    num_in_splits
-        .iter()
-        .zip(splits.iter())
-        .all(|(num, split)| *num == *split)
+    num_in_splits == splits
 }
 
 /// returns the bucket of a value according to a splitting and seed
