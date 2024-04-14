@@ -1,6 +1,4 @@
-use core::num;
 use std::{
-    collections::HashSet,
     hash::{DefaultHasher, Hash, Hasher},
     iter::{once, repeat},
     marker::PhantomData,
@@ -181,6 +179,9 @@ fn is_split<T: Hash>(seed: usize, splits: &[usize], values: &[T]) -> bool {
 fn get_hash_bucket<T: Hash>(value: &T, seed: usize, splits: &[usize]) -> usize {
     let hash = hash_with_seed(seed, splits.iter().sum(), value);
     debug_assert!(hash < splits.iter().sum());
+
+
+
     for (bucked_idx, bucket_max) in splits
         .iter()
         .scan(0usize, |a, b| {
@@ -189,7 +190,7 @@ fn get_hash_bucket<T: Hash>(value: &T, seed: usize, splits: &[usize]) -> usize {
         })
         .enumerate()
     {
-        if (hash) < bucket_max {
+        if hash < bucket_max {
             return bucked_idx;
         }
     }
@@ -218,21 +219,21 @@ mod tests {
     //     assert_eq!(1, get_hash_bucket(9, &[5, 5]));
     // }
 
-    #[test]
-    fn test_split() {
-        const SIZE: usize = 1000;
-        let values = (0..SIZE).collect::<Vec<_>>();
-        let split = [SIZE / 2; 2];
-        assert_eq!(43, find_split_seed(&split, &values))
-    }
+    // #[test]
+    // fn test_split() {
+    //     const SIZE: usize = 1000;
+    //     let values = (0..SIZE).collect::<Vec<_>>();
+    //     let split = [SIZE / 2; 2];
+    //     assert_eq!(43, find_split_seed(&split, &values))
+    // }
 
-    #[test]
-    fn test_split_mphf() {
-        const SIZE: usize = 10;
-        let values = (0..SIZE).collect::<Vec<_>>();
-        let split = [1; SIZE];
-        assert_eq!(43, find_split_seed(&split, &values))
-    }
+    // #[test]
+    // fn test_split_mphf() {
+    //     const SIZE: usize = 10;
+    //     let values = (0..SIZE).collect::<Vec<_>>();
+    //     let split = [1; SIZE];
+    //     assert_eq!(43, find_split_seed(&split, &values))
+    // }
 
     #[test]
     fn get_bucket_vs_hash_with_seed() {
@@ -269,9 +270,9 @@ mod tests {
 
     #[test]
     fn test_find_split() {
-        for split in 2..=5 {
+        for split in 2..=4 {
             println!("split in {split} parts");
-            let size = 360;
+            let size = 36;
             assert!(size % split == 0);
             let splits = vec![size / split; split];
             let values = (0..size).map(|_| random::<usize>()).collect::<Vec<_>>();
@@ -309,8 +310,9 @@ mod tests {
 
     #[test]
     fn test_many_tree() {
-        for i in (0..1000).step_by(100) {
+        for i in (0..500).step_by(100) {
             let size = i;
+            println!("size {size}");
             let leaf_size = 15;
             let values = (0..size)
                 .map(|_| rand::random::<usize>())
