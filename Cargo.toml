@@ -22,5 +22,5 @@ harness = false
 log = "0.4.21"
 
 # for flamegraph
-# [profile.release]
-# debug = true
+[profile.release]
+debug = true
