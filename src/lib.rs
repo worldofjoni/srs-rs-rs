@@ -4,7 +4,14 @@ use std::{
     marker::PhantomData,
 };
 
+use ahash::AHasher;
+use fnv::FnvHasher;
+#[cfg(not(test))]
 use log::debug;
+#[cfg(test)]
+use std::println as debug;
+
+use rustc_hash::FxHasher;
 
 #[derive(Debug)]
 pub struct RecSplit<T: Hash> {
@@ -121,6 +128,7 @@ fn construct_splitting_tree<T: Hash>(
 
 #[derive(Debug)]
 enum SplittingTree {
+    // number of previous hashes, ?, seed
     Inner(usize, Vec<SplittingTree>, usize),
     Leaf(usize, usize),
 }
@@ -136,9 +144,10 @@ impl SplittingTree {
 
 /// Hashes `value` with hash function Phi_`seed`^`max`, that is each hash is in range [0,`max`).
 fn hash_with_seed<T: Hash>(seed: usize, max: usize, value: &T) -> usize {
-    let mut hasher = DefaultHasher::new();
+    let mut hasher = AHasher::default();
     hasher.write_usize(seed);
     value.hash(&mut hasher);
+    // debug!("raw hash {}", hasher.finish());
     hasher.finish() as usize % max
 }
 
@@ -170,7 +179,7 @@ fn is_split<T: Hash>(seed: usize, splits: &[usize], values: &[T]) -> bool {
         let bucket_idx = get_hash_bucket(val, seed, splits);
         num_in_splits[bucket_idx] += 1;
     }
-    // debug!("buckets {num_in_splits:?}");
+    // debug!("splits {splits:?}, buckets {num_in_splits:?}");
 
     num_in_splits == splits
 }
@@ -178,10 +187,10 @@ fn is_split<T: Hash>(seed: usize, splits: &[usize], values: &[T]) -> bool {
 /// returns the bucket of a value according to a splitting and seed
 fn get_hash_bucket<T: Hash>(value: &T, seed: usize, splits: &[usize]) -> usize {
     let hash = hash_with_seed(seed, splits.iter().sum(), value);
+    // debug!("hash {hash}");
     debug_assert!(hash < splits.iter().sum());
 
-
-
+    // TODO: improve with precalculated boundaries?
     for (bucked_idx, bucket_max) in splits
         .iter()
         .scan(0usize, |a, b| {
@@ -292,6 +301,8 @@ mod tests {
 
     #[test]
     fn test_single_tree() {
+        env_logger::init();
+
         let values = (0..100).collect::<Vec<_>>();
         let tree = RecSplit::new(10, &values);
         println!("{tree:?}");
@@ -310,6 +321,8 @@ mod tests {
 
     #[test]
     fn test_many_tree() {
+        env_logger::init();
+
         for i in (0..500).step_by(100) {
             let size = i;
             println!("size {size}");

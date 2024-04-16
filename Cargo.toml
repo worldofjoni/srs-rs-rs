@@ -19,8 +19,13 @@ name = "search_hash"
 harness = false
 
 [dependencies]
+ahash = "0.8.11"
+env_logger = "0.11.3"
+fnv = "1.0.7"
 log = "0.4.21"
+rustc-hash = "1.1.0"
 
-# for flamegraph
+
 [profile.release]
-debug = true
+debug = true # for flamegraph
+lto = true
