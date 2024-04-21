@@ -27,4 +27,4 @@ harness = false
 
 [profile.release]
 debug = true # for flamegraph
-lto = true
+lto = "thin"
