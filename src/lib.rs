@@ -17,10 +17,12 @@ pub struct RecSplit<T: Hash, H: BuildHasher> {
 }
 
 impl<T: Hash, H: BuildHasher> RecSplit<T, H> {
+    pub const MAX_LEAF_SIZE: usize = 24;
+
     /// `leaf_size` must be in `1..=24`.\
     /// `values` must be **distinct**, that is they _can_ produce unique hashes.
     pub fn with_state(leaf_size: usize, values: &[T], random_state: H) -> Self {
-        debug_assert!((1..=24).contains(&leaf_size));
+        debug_assert!((1..=Self::MAX_LEAF_SIZE).contains(&leaf_size));
 
         let size = values.len();
         let mut values = values.iter().collect::<Vec<_>>();
@@ -56,7 +58,7 @@ impl<T: Hash, H: BuildHasher> RecSplit<T, H> {
 
 impl<T: Hash> RecSplit<T, ahash::RandomState> {
     pub fn new_random(values: &[T]) -> Self {
-        Self::with_state(16, values, ahash::RandomState::new())
+        Self::with_state(12, values, ahash::RandomState::new())
     }
 }
 
@@ -176,18 +178,19 @@ impl<H: BuildHasher> RecHasher<H> {
     /// `split` is list of length of splitting sections, must sum up to `values.len()`
     fn is_split(&self, seed: usize, max_child_size: usize, values: &[impl Hash]) -> bool {
         let size = values.len();
-        let mut num_in_splits = vec![0; size.div_ceil(max_child_size)];
+        let num_children = size.div_ceil(max_child_size);
+
+        const MAX_CHILDREN: usize = 10; // given by leaf_size <= 24 and splitting strategy
+        let mut child_sizes = [0_usize; MAX_CHILDREN];
 
         for val in values {
-            let bucket_idx = self.hash_to_child(seed, size, max_child_size, val);
-            num_in_splits[bucket_idx] += 1;
+            let child_idx = self.hash_to_child(seed, size, max_child_size, val);
+            child_sizes[child_idx] += 1;
         }
-        // debug!("splits {splits:?}, buckets {num_in_splits:?}");
 
-        num_in_splits
+        child_sizes
             .iter()
-            .rev()
-            .skip(1)
+            .take(num_children - 1)
             .all(|v| *v == max_child_size)
     }
 
@@ -206,11 +209,25 @@ impl<H: BuildHasher> RecHasher<H> {
 
         let hash = hasher.finish() as usize;
 
-        if max_child_size.is_power_of_two() {
-            (hash % size) >> max_child_size.ilog2()
-        } else {
-            hash % size / max_child_size
-        }
+        fast_div(fast_mod(hash, size), max_child_size)
+    }
+}
+
+#[inline(always)]
+fn fast_div(a: usize, b: usize) -> usize {
+    if b.is_power_of_two() {
+        a >> b.ilog2()
+    } else {
+        a / b
+    }
+}
+
+#[inline(always)]
+fn fast_mod(a: usize, b: usize) -> usize {
+    if b.is_power_of_two() {
+        a & (b - 1)
+    } else {
+        a % b
     }
 }
 
@@ -221,14 +238,21 @@ mod tests {
 
     use rand::random;
 
-    use crate::{construct_splitting_strategy, RecHasher, RecSplit};
+    use crate::{construct_splitting_strategy, fast_div, fast_mod, RecHasher, RecSplit};
+
+    #[test]
+    fn fast() {
+        let num = 1234;
+        assert_eq!(fast_div(num, 8), num / 8);
+        assert_eq!(fast_mod(num, 8), num % 8);
+    }
 
     #[test]
     fn test_construct_strategy() {
         let max_leaf_size = 24;
 
         for size in (0..1000).step_by(100).skip(1) {
-            for leaf_size in 1..max_leaf_size.min(size) {
+            for leaf_size in 1..=max_leaf_size.min(size) {
                 assert!(
                     construct_splitting_strategy(leaf_size, size).product::<usize>() * leaf_size
                         >= size
@@ -267,7 +291,7 @@ mod tests {
 
     #[test]
     fn test_single_tree() {
-        let values = (0..1000).collect::<Vec<_>>();
+        let values = (0..10000).collect::<Vec<_>>();
         let tree = RecSplit::new_random(&values);
         // println!("{tree:?}");
 
@@ -285,7 +309,7 @@ mod tests {
 
     #[test]
     fn test_many_tree() {
-        for i in (0..500).step_by(100) {
+        for i in (0..10000).skip(1).step_by(1000) {
             let size = i;
             println!("size {size}");
             let values = (0..size)
