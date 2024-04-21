@@ -141,14 +141,12 @@ impl<H: BuildHasher> RecHasher<H> {
         }
 
         let split_degree = splitting_strategy.next().expect("splitting unit");
-        debug!("constructing inner node for {size} values and splitting degree {split_degree}");
-
         let max_child_size = size.div_ceil(split_degree);
-        let mut split = vec![max_child_size; split_degree];
-        *split.last_mut().expect("no empty tree") -= max_child_size * split_degree - size;
+        debug!("constructing inner node for {size} values and splitting degree {split_degree}");
 
         let seed = self.find_split_seed(max_child_size, values);
         debug!("\tsplit with seed {seed}");
+
         values.sort_unstable_by_key(|v| self.hash_to_child(seed, size, max_child_size, v));
 
         let children: Vec<_> = values
@@ -208,7 +206,11 @@ impl<H: BuildHasher> RecHasher<H> {
 
         let hash = hasher.finish() as usize;
 
-        hash % size / max_child_size
+        if max_child_size.is_power_of_two() {
+            (hash % size) >> max_child_size.ilog2()
+        } else {
+            hash % size / max_child_size
+        }
     }
 }
 
