@@ -13,38 +13,63 @@ use std::println as debug;
 pub struct RecSplit<T: Hash, H: BuildHasher> {
     _phantom: PhantomData<T>,
     hasher: RecHasher<H>,
-    tree: SplittingTree,
+    trees: Vec<SplittingTree>,
 }
 
+pub const MAX_LEAF_SIZE: usize = 24;
 impl<T: Hash, H: BuildHasher> RecSplit<T, H> {
-    pub const MAX_LEAF_SIZE: usize = 24;
-
     /// `leaf_size` must be in `1..=24`.\
     /// `values` must be **distinct**, that is they _can_ produce unique hashes.
-    pub fn with_state(leaf_size: usize, values: &[T], random_state: H) -> Self {
-        debug_assert!((1..=Self::MAX_LEAF_SIZE).contains(&leaf_size));
+    pub fn with_state(
+        leaf_size: usize,
+        avg_bucket_size: usize,
+        values: &[T],
+        random_state: H,
+    ) -> Self {
+        debug_assert!((1..=MAX_LEAF_SIZE).contains(&leaf_size));
 
         let size = values.len();
+        let num_buckets = size.div_ceil(avg_bucket_size);
         let mut values = values.iter().collect::<Vec<_>>();
         let hasher = RecHasher(random_state);
+
+        values.sort_unstable_by_key(|v| hasher.hash_to_bucket(num_buckets, v));
+        let trees = values
+            .chunk_by_mut(|a, b| {
+                hasher.hash_to_bucket(num_buckets, a) == hasher.hash_to_bucket(num_buckets, b)
+            })
+            .map(|bucket| {
+                let bucket_size = bucket.len();
+                hasher.construct_splitting_tree(
+                    leaf_size,
+                    bucket,
+                    construct_splitting_strategy(leaf_size, bucket_size),
+                )
+            })
+            .collect::<Vec<_>>();
+
         Self {
             _phantom: PhantomData,
-            tree: hasher.construct_splitting_tree(
-                leaf_size,
-                &mut values,
-                construct_splitting_strategy(leaf_size, size),
-            ),
+            trees,
             hasher,
         }
     }
 
     pub fn size(&self) -> usize {
-        self.tree.get_size()
+        self.trees.iter().map(SplittingTree::get_size).sum()
     }
 
     /// ensures result in `0..self.get_size()`
     pub fn hash(&self, value: &T) -> usize {
-        self.hasher.hash_with_tree(&self.tree, value)
+        let bucket = self.hasher.hash_to_bucket(self.trees.len(), value);
+        let offset: usize = self
+            .trees
+            .iter()
+            .take(bucket)
+            .map(SplittingTree::get_size)
+            .sum();
+
+        offset + self.hasher.hash_with_tree(&self.trees[bucket], value)
     }
 
     pub fn serialize(&self) -> Box<[u8]> {
@@ -58,7 +83,7 @@ impl<T: Hash, H: BuildHasher> RecSplit<T, H> {
 
 impl<T: Hash> RecSplit<T, ahash::RandomState> {
     pub fn new_random(values: &[T]) -> Self {
-        Self::with_state(12, values, ahash::RandomState::new())
+        Self::with_state(12, 8, values, ahash::RandomState::new())
     }
 }
 
@@ -181,7 +206,9 @@ impl<H: BuildHasher> RecHasher<H> {
         let num_children = size.div_ceil(max_child_size);
 
         const MAX_CHILDREN: usize = 10; // given by leaf_size <= 24 and splitting strategy
-        let mut child_sizes = [0_usize; MAX_CHILDREN];
+        const MAX_SPLIT_DEGREE: usize = const_max(MAX_CHILDREN, MAX_LEAF_SIZE); // either split according to strategy or directly into leafs
+
+        let mut child_sizes = [0_usize; MAX_SPLIT_DEGREE];
 
         for val in values {
             let child_idx = self.hash_to_child(seed, size, max_child_size, val);
@@ -196,7 +223,7 @@ impl<H: BuildHasher> RecHasher<H> {
     }
 
     /// hashes into one of the `0..size.div_ceil(max_child_size)` children
-    pub fn hash_to_child(
+    fn hash_to_child(
         &self,
         seed: usize,
         size: usize,
@@ -216,6 +243,15 @@ impl<H: BuildHasher> RecHasher<H> {
 
         // - getting the child index: hash / max_child_size
         fast_div((rescaled_hash >> BITS) as usize, max_child_size) // Q: is this inaccurate, as bit shifting happens before division?
+    }
+
+    /// Hashing for initial bucket assignment. Tries to be independent from [`hash_to_child`] to avoid correlation, thus hashes twice.
+    fn hash_to_bucket(&self, num_buckets: usize, value: &impl Hash) -> usize {
+        let mut hasher = self.0.build_hasher();
+        value.hash(&mut hasher);
+        value.hash(&mut hasher);
+        let hash = hasher.finish() as usize;
+        hash % num_buckets
     }
 }
 
@@ -237,6 +273,14 @@ fn fast_div(a: usize, b: usize) -> usize {
 //     }
 // }
 
+const fn const_max(a: usize, b: usize) -> usize {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -244,13 +288,24 @@ mod tests {
 
     use rand::random;
 
-    use crate::{construct_splitting_strategy, fast_div, RecHasher, RecSplit};
+    use crate::{
+        const_max, construct_splitting_strategy, fast_div, RecHasher, RecSplit, MAX_LEAF_SIZE,
+    };
 
     #[test]
-    fn fast() {
+    fn test_fast() {
         let num = 1234;
         assert_eq!(fast_div(num, 8), num / 8);
         // assert_eq!(fast_mod(num, 8), num % 8);
+    }
+
+    #[test]
+    fn test_max() {
+        for i in 0..100 {
+            for j in 0..100 {
+                assert_eq!(i.max(j), const_max(i, j));
+            }
+        }
     }
 
     #[test]
@@ -269,6 +324,27 @@ mod tests {
         //     construct_splitting_strategy(leaf_size, size).collect::<Vec<_>>(),
         //     &[]
         // );
+    }
+
+    #[test]
+    fn test_strategy_limit() {
+        for i in 0..50 {
+            assert!(construct_splitting_strategy(12, i).all(|v| v <= MAX_LEAF_SIZE))
+        }
+    }
+    #[test]
+    fn test_hash_child() {
+        let hasher = RecHasher(ahash::RandomState::new());
+        for size in 1..100 {
+            for max_child_size in 1..size {
+                for value in 0..100 {
+                    for seed in 0..1000 {
+                        let hash = hasher.hash_to_child(seed, size, max_child_size, &value);
+                        assert!(hash < size.div_ceil(max_child_size))
+                    }
+                }
+            }
+        }
     }
 
     #[test]
