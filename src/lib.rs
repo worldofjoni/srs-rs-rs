@@ -188,6 +188,7 @@ impl<H: BuildHasher> RecHasher<H> {
             child_sizes[child_idx] += 1;
         }
 
+        // todo: more efficient compare possible using wider registers?
         child_sizes
             .iter()
             .take(num_children - 1)
@@ -195,7 +196,7 @@ impl<H: BuildHasher> RecHasher<H> {
     }
 
     /// hashes into one of the `0..size.div_ceil(max_child_size)` children
-    fn hash_to_child(
+    pub fn hash_to_child(
         &self,
         seed: usize,
         size: usize,
@@ -209,7 +210,12 @@ impl<H: BuildHasher> RecHasher<H> {
 
         let hash = hasher.finish() as usize;
 
-        fast_div(fast_mod(hash, size), max_child_size)
+        // mapping hash to 0..size
+        const BITS: usize = 8 * std::mem::size_of::<usize>();
+        let rescaled_hash = hash as u128 * size as u128;
+
+        // - getting the child index: hash / max_child_size
+        fast_div((rescaled_hash >> BITS) as usize, max_child_size) // Q: is this inaccurate, as bit shifting happens before division?
     }
 }
 
@@ -222,14 +228,14 @@ fn fast_div(a: usize, b: usize) -> usize {
     }
 }
 
-#[inline(always)]
-fn fast_mod(a: usize, b: usize) -> usize {
-    if b.is_power_of_two() {
-        a & (b - 1)
-    } else {
-        a % b
-    }
-}
+// #[inline(always)]
+// fn fast_mod(a: usize, b: usize) -> usize {
+//     if b.is_power_of_two() {
+//         a & (b - 1)
+//     } else {
+//         a % b
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -238,13 +244,13 @@ mod tests {
 
     use rand::random;
 
-    use crate::{construct_splitting_strategy, fast_div, fast_mod, RecHasher, RecSplit};
+    use crate::{construct_splitting_strategy, fast_div, RecHasher, RecSplit};
 
     #[test]
     fn fast() {
         let num = 1234;
         assert_eq!(fast_div(num, 8), num / 8);
-        assert_eq!(fast_mod(num, 8), num % 8);
+        // assert_eq!(fast_mod(num, 8), num % 8);
     }
 
     #[test]
