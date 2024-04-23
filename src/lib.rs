@@ -237,12 +237,8 @@ impl<H: BuildHasher> RecHasher<H> {
 
         let hash = hasher.finish() as usize;
 
-        // mapping hash to 0..size
-        const BITS: usize = 8 * std::mem::size_of::<usize>();
-        let rescaled_hash = hash as u128 * size as u128;
-
-        // - getting the child index: hash / max_child_size
-        fast_div((rescaled_hash >> BITS) as usize, max_child_size) // Q: is this inaccurate, as bit shifting happens before division?
+        // getting the child index: hash / max_child_size
+        fast_div(distribute(hash, size), max_child_size)
     }
 
     /// Hashing for initial bucket assignment. Tries to be independent from [`hash_to_child`] to avoid correlation, thus hashes twice.
@@ -251,7 +247,7 @@ impl<H: BuildHasher> RecHasher<H> {
         value.hash(&mut hasher);
         value.hash(&mut hasher);
         let hash = hasher.finish() as usize;
-        hash % num_buckets
+        distribute(hash, num_buckets)
     }
 }
 
@@ -262,6 +258,14 @@ fn fast_div(a: usize, b: usize) -> usize {
     } else {
         a / b
     }
+}
+
+/// distributes the hash evenly in `0..max`.
+#[inline(always)]
+fn distribute(hash: usize, max: usize) -> usize {
+    const BITS_PER_USIZE: usize = 8 * std::mem::size_of::<usize>();
+
+    ((max as u128 * hash as u128) >> BITS_PER_USIZE) as usize
 }
 
 // #[inline(always)]
