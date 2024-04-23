@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     hash::{BuildHasher, Hash, Hasher},
     iter::{once, repeat},
     marker::PhantomData,
@@ -34,19 +35,23 @@ impl<T: Hash, H: BuildHasher> RecSplit<T, H> {
         let hasher = RecHasher(random_state);
 
         values.sort_unstable_by_key(|v| hasher.hash_to_bucket(num_buckets, v));
-        let trees = values
+
+        // Attention! empty buckets get not chunked but still must be represented!
+        let mut trees = vec![SplittingTree::Leaf(0, 0); num_buckets];
+
+        values
             .chunk_by_mut(|a, b| {
                 hasher.hash_to_bucket(num_buckets, a) == hasher.hash_to_bucket(num_buckets, b)
             })
-            .map(|bucket| {
+            .for_each(|bucket| {
                 let bucket_size = bucket.len();
-                hasher.construct_splitting_tree(
+                let bucket_idx = hasher.hash_to_bucket(num_buckets, bucket[0]);
+                trees[bucket_idx] = hasher.construct_splitting_tree(
                     leaf_size,
                     bucket,
                     construct_splitting_strategy(leaf_size, bucket_size),
                 )
-            })
-            .collect::<Vec<_>>();
+            });
 
         Self {
             _phantom: PhantomData,
@@ -81,13 +86,13 @@ impl<T: Hash, H: BuildHasher> RecSplit<T, H> {
     }
 }
 
-impl<T: Hash> RecSplit<T, ahash::RandomState> {
+impl<T: Hash + Debug> RecSplit<T, ahash::RandomState> {
     pub fn new_random(values: &[T]) -> Self {
         Self::with_state(12, 8, values, ahash::RandomState::new())
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum SplittingTree {
     // number of previous hashes, ?, seed // todo make struct variants with names
     Inner(usize, Vec<SplittingTree>, usize),
@@ -161,18 +166,18 @@ impl<H: BuildHasher> RecHasher<H> {
     ) -> SplittingTree {
         let size = values.len();
         if size <= leaf_size {
-            debug!("constructing leaf node of size {}", size);
+            // debug!("constructing leaf node of size {}", size);
             let seed = self.find_split_seed(1, values);
-            debug!("\tsplit with seed {seed}");
+            // debug!("\tsplit with seed {seed}");
             return SplittingTree::Leaf(seed, size);
         }
 
         let split_degree = splitting_strategy.next().expect("splitting unit");
         let max_child_size = size.div_ceil(split_degree);
-        debug!("constructing inner node for {size} values and splitting degree {split_degree}");
+        // debug!("constructing inner node for {size} values and splitting degree {split_degree}");
 
         let seed = self.find_split_seed(max_child_size, values);
-        debug!("\tsplit with seed {seed}");
+        // debug!("\tsplit with seed {seed}");
 
         values.sort_unstable_by_key(|v| self.hash_to_child(seed, size, max_child_size, v));
 
@@ -377,20 +382,26 @@ mod tests {
 
     #[test]
     fn test_single_tree() {
-        let values = (0..10000).collect::<Vec<_>>();
-        let tree = RecSplit::new_random(&values);
-        // println!("{tree:?}");
+        let size = 10000;
+        let values = (0..size).collect::<Vec<_>>();
+        let recsplit = RecSplit::new_random(&values);
 
-        let set = (0..tree.size())
-            .map(|i| tree.hash(&i))
+        let set = (0..recsplit.size())
+            .map(|i| recsplit.hash(&i))
             .collect::<HashSet<_>>();
-        // let mut histogram = HashMap::new();
+        // let mut histogram = std::collections::HashMap::new();
 
-        // (0..tree.size()).for_each(|i| *histogram.entry(tree.hash(&i)).or_insert(0) += 1);
+        // (0..recsplit.size()).for_each(|i| *histogram.entry(recsplit.hash(&i)).or_insert(0) += 1);
         // println!("histogram: {histogram:?}");
+        // let mut wrong = histogram
+        //     .iter()
+        //     .filter(|(k, v)| **v != 1)
+        //     .collect::<Vec<_>>();
+        // wrong.sort_by_key(|(k, v)| **k);
+        // println!("wrong: {wrong:?}",);
 
         assert_eq!(set.len(), values.len());
-        assert_eq!(set, (0..tree.size()).collect());
+        assert_eq!(set, (0..recsplit.size()).collect());
     }
 
     #[test]
