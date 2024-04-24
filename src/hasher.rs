@@ -3,9 +3,9 @@ use std::hash::{BuildHasher, Hash, Hasher};
 use crate::{recsplit::MAX_LEAF_SIZE, splitting_tree::SplittingTree};
 
 #[derive(Debug, Clone)]
-pub struct RecHasher<H: BuildHasher>(pub H);
+pub struct RecHasher<H: BuildHasher + Clone>(pub H);
 
-impl<H: BuildHasher> RecHasher<H> {
+impl<H: BuildHasher + Clone> RecHasher<H> {
     pub fn hash_with_tree(&self, tree: &SplittingTree, value: &impl Hash) -> usize {
         match tree {
             SplittingTree::Inner {
@@ -146,9 +146,7 @@ fn fast_div(a: usize, b: usize) -> usize {
 /// distributes the hash evenly in `0..max`.
 #[inline(always)]
 fn distribute(hash: usize, max: usize) -> usize {
-    const BITS_PER_USIZE: usize = 8 * std::mem::size_of::<usize>();
-
-    ((max as u128 * hash as u128) >> BITS_PER_USIZE) as usize
+    ((max as u128 * hash as u128) >> usize::BITS) as usize
 }
 
 // #[inline(always)]

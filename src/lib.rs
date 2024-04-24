@@ -8,4 +8,4 @@ mod hasher;
 mod recsplit;
 mod splitting_tree;
 
-pub use recsplit::RecSplit;
+pub use recsplit::LooseRecSplit;
