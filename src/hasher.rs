@@ -84,6 +84,7 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
     }
 
     /// `split` is list of length of splitting sections, must sum up to `values.len()`
+    // todo specialized version for bijections
     pub fn is_split(&self, seed: usize, max_child_size: usize, values: &[impl Hash]) -> bool {
         let size = values.len();
         let num_children = size.div_ceil(max_child_size);
