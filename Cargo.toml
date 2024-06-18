@@ -25,6 +25,10 @@ rand = "0.8.5"
 name = "search_hash"
 harness = false
 
+[[bench]]
+name = "mvp_srs"
+harness = false
+
 
 [profile.release]
 debug = true # for flamegraph
