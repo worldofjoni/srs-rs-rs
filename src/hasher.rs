@@ -137,11 +137,10 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
         lazy_static! {
             // first value si for size 1!
             // inspired by Recsplit <https://github.com/vigna/sux/blob/5bdaa93b0d3f74841e9a5a2a04e72f1b4c8de6f9/sux/function/RecSplit.hpp#L275C1-L282C2>
-            static ref MIDPOINTS: [u16; MAX_LEAF_SIZE] = (1..=MAX_LEAF_SIZE).map(|i| ((4. * i as f32).sqrt().ceil() as u16).min(i as u16)).collect::<Vec<_>>().try_into().unwrap();
+            static ref MIDPOINTS: [u16; MAX_LEAF_SIZE + 1] = (0..=MAX_LEAF_SIZE).map(|i| ((4. * i as f32).sqrt().ceil() as u16).min(i as u16)).collect::<Vec<_>>().try_into().unwrap();
         }
 
-        let midpoint = size / 2; // todo: better midpoint: not really worth it, maybe try with different PERFECT sizes: MIDPOINTS[size - 1] as usize; // todo find optimal midpoint
-        // todo maybe no midstop for small sizes?
+        let midpoint = MIDPOINTS[size] as usize;
         let (v1, v2) = values.split_at(midpoint);
 
         for val in v1 {

@@ -31,6 +31,9 @@ harness = false
 name = "mvp_srs"
 harness = false
 
+# [[bin]]
+# name = "bin"
+# path = "src/bin.rs"
 
 [profile.release]
 debug = true # for flamegraph
