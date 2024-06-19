@@ -41,7 +41,7 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
         let size = values.len();
         if size <= leaf_size {
             // debug!("constructing leaf node of size {}", size);
-            let seed = self.find_split_seed(1, values);
+            let seed = self.find_split_seed(1, values); // todo use specialized version
             // debug!("\tsplit with seed {seed}");
             return SplittingTree::Leaf { seed, size };
         }
@@ -84,7 +84,6 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
     }
 
     /// `split` is list of length of splitting sections, must sum up to `values.len()`
-    // todo specialized version for bijections
     pub fn is_split(&self, seed: usize, max_child_size: usize, values: &[impl Hash]) -> bool {
         let size = values.len();
         let num_children = size.div_ceil(max_child_size);
@@ -123,6 +122,35 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
 
         // getting the child index: hash / max_child_size
         fast_div(distribute(hash, size), max_child_size)
+    }
+
+    /// `split` is list of length of splitting sections, must sum up to `values.len()`
+    pub fn is_bijection(&self, seed: usize, values: &[impl Hash]) -> bool {
+        let size = values.len();
+
+        debug_assert!(size <= u32::BITS as usize);
+
+        let mut child_sizes: u32 = 0;
+
+        for val in values {
+            let child_idx = self.hash_bijection(seed, size, val);
+            child_sizes |=  1 << child_idx;
+        }
+
+        child_sizes == (1 << size) - 1
+    }
+
+    /// hashes into one of the `0..size.div_ceil(max_child_size)` children
+    pub fn hash_bijection(&self, seed: usize, size: usize, value: &impl Hash) -> usize {
+        let mut hasher = self.0.build_hasher();
+
+        hasher.write_usize(seed);
+        value.hash(&mut hasher);
+
+        let hash = hasher.finish() as usize;
+
+        // getting the child index: hash / max_child_size
+        distribute(hash, size)
     }
 
     /// Hashing for initial bucket assignment. Tries to be independent from [`hash_to_child`] to avoid correlation, thus hashes twice.

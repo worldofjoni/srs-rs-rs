@@ -9,4 +9,4 @@ mod recsplit;
 mod splitting_tree;
 
 pub use recsplit::LooseRecSplit;
-pub mod srs;
+pub mod mvp;
