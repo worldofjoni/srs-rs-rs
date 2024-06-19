@@ -22,6 +22,8 @@ static_assertions = "1.1.0"
 criterion = { versuion = "0.5.1", features = ["html_reports"] }
 rand = "0.8.5"
 
+[features]
+debug_output = []
 
 [[bench]]
 name = "search_hash"
