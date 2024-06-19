@@ -140,7 +140,8 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
             static ref MIDPOINTS: [u16; MAX_LEAF_SIZE] = (1..=MAX_LEAF_SIZE).map(|i| ((4. * i as f32).sqrt().ceil() as u16).min(i as u16)).collect::<Vec<_>>().try_into().unwrap();
         }
 
-        let midpoint = size / 2; // todo not really worth it, maybe try with different PERFECT sizes: MIDPOINTS[size - 1] as usize; // todo find optimal midpoint
+        let midpoint = size / 2; // todo: better midpoint: not really worth it, maybe try with different PERFECT sizes: MIDPOINTS[size - 1] as usize; // todo find optimal midpoint
+        // todo maybe no midstop for small sizes?
         let (v1, v2) = values.split_at(midpoint);
 
         for val in v1 {
