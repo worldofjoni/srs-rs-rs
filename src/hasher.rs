@@ -1,7 +1,5 @@
 use std::hash::{BuildHasher, Hash, Hasher};
 
-use lazy_static::lazy_static;
-
 use crate::{recsplit::MAX_LEAF_SIZE, splitting_tree::SplittingTree};
 
 #[derive(Debug, Clone)]
@@ -85,7 +83,6 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
         panic!("no split found");
     }
 
-    /// `split` is list of length of splitting sections, must sum up to `values.len()`
     pub fn is_split(&self, seed: usize, max_child_size: usize, values: &[impl Hash]) -> bool {
         let size = values.len();
         let num_children = size.div_ceil(max_child_size);
@@ -134,13 +131,17 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
 
         let mut child_sizes: u32 = 0;
 
-        lazy_static! {
-            // first value si for size 1!
-            // inspired by Recsplit <https://github.com/vigna/sux/blob/5bdaa93b0d3f74841e9a5a2a04e72f1b4c8de6f9/sux/function/RecSplit.hpp#L275C1-L282C2>
-            static ref MIDPOINTS: [u16; MAX_LEAF_SIZE + 1] = (0..=MAX_LEAF_SIZE).map(|i| ((4. * i as f32).sqrt().ceil() as u16).min(i as u16)).collect::<Vec<_>>().try_into().unwrap();
-        }
+        // thread_local has show to have no performance penalty here...
+        // first value si for size 1!
+        // inspired by Recsplit <https://github.com/vigna/sux/blob/5bdaa93b0d3f74841e9a5a2a04e72f1b4c8de6f9/sux/function/RecSplit.hpp#L275C1-L282C2>
+        thread_local! {static MIDPOINTS: [u16; MAX_LEAF_SIZE + 1] = (0..=MAX_LEAF_SIZE)
+            .map(|i| ((4. * i as f32).sqrt().ceil() as u16).min(i as u16))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap()
+        };
 
-        let midpoint = MIDPOINTS[size] as usize;
+        let midpoint = MIDPOINTS.with(|i| i[size]) as usize;
         let (v1, v2) = values.split_at(midpoint);
 
         for val in v1 {
@@ -160,7 +161,7 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
         child_sizes == (1 << size) - 1
     }
 
-    /// hashes into one of the `0..size.div_ceil(max_child_size)` children
+    /// hashes into `0..size`
     pub fn hash_bijection(&self, seed: usize, size: usize, value: &impl Hash) -> usize {
         let mut hasher = self.0.build_hasher();
 
