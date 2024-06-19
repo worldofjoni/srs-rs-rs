@@ -1,5 +1,7 @@
 use std::hash::{BuildHasher, Hash, Hasher};
 
+use lazy_static::lazy_static;
+
 use crate::{recsplit::MAX_LEAF_SIZE, splitting_tree::SplittingTree};
 
 #[derive(Debug, Clone)]
@@ -42,7 +44,7 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
         if size <= leaf_size {
             // debug!("constructing leaf node of size {}", size);
             let seed = self.find_split_seed(1, values); // todo use specialized version
-            // debug!("\tsplit with seed {seed}");
+                                                        // debug!("\tsplit with seed {seed}");
             return SplittingTree::Leaf { seed, size };
         }
 
@@ -132,9 +134,27 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
 
         let mut child_sizes: u32 = 0;
 
-        for val in values {
+        lazy_static! {
+            // first value si for size 1!
+            // inspired by Recsplit <https://github.com/vigna/sux/blob/5bdaa93b0d3f74841e9a5a2a04e72f1b4c8de6f9/sux/function/RecSplit.hpp#L275C1-L282C2>
+            static ref MIDPOINTS: [u16; MAX_LEAF_SIZE] = (1..=MAX_LEAF_SIZE).map(|i| ((4. * i as f32).sqrt().ceil() as u16).min(i as u16)).collect::<Vec<_>>().try_into().unwrap();
+        }
+
+        let midpoint = size / 2; // todo not really worth it, maybe try with different PERFECT sizes: MIDPOINTS[size - 1] as usize; // todo find optimal midpoint
+        let (v1, v2) = values.split_at(midpoint);
+
+        for val in v1 {
             let child_idx = self.hash_bijection(seed, size, val);
-            child_sizes |=  1 << child_idx;
+            child_sizes |= 1 << child_idx;
+        }
+
+        if child_sizes.count_ones() != midpoint as u32 {
+            return false;
+        }
+
+        for val in v2 {
+            let child_idx = self.hash_bijection(seed, size, val);
+            child_sizes |= 1 << child_idx;
         }
 
         child_sizes == (1 << size) - 1
