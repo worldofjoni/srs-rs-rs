@@ -72,11 +72,26 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
     /// require: sum of splits == values.len()
     pub fn find_split_seed(&self, max_child_size: usize, values: &[impl Hash]) -> usize {
         for i in 0..usize::MAX {
-            if i % 10000 == 0 && i != 0 {
-                crate::debug!("finding seed: iteration {i}");
+            #[cfg(feature = "debug_output")]
+            {
+                if i % 10000 == 0 && i != 0 {
+                    crate::debug!("finding seed: iteration {i}");
+                }
+
+                if max_child_size == 1 {
+                    bij_checked.set(bij_checked.get() + 1);
+                } else {
+                    splits_checked.set(splits_checked.get() + 1);
+                }
             }
 
             if self.is_split(i, max_child_size, values) {
+                #[cfg(feature = "debug_output")]
+                println!(
+                    "hashes until success: {i}, leaf: {}, size: {}",
+                    max_child_size == 1,
+                    values.len()
+                );
                 return i;
             }
         }
@@ -182,6 +197,13 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
         let hash = hasher.finish() as usize;
         distribute(hash, num_buckets)
     }
+}
+
+#[cfg(feature = "debug_output")]
+thread_local! {
+    pub static splits_checked: std::cell::Cell<usize> = std::cell::Cell::new(0);
+    pub static bij_checked: std::cell::Cell<usize> = std::cell::Cell::new(0);
+
 }
 
 #[inline(always)]
