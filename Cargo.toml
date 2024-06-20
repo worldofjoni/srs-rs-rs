@@ -18,7 +18,7 @@ log = "0.4.21"
 static_assertions = "1.1.0"
 
 [dev-dependencies]
-criterion = { versuion = "0.5.1", features = ["html_reports"] }
+criterion = { version = "0.5.1", features = ["html_reports"] }
 rand = "0.8.5"
 
 [features]
@@ -30,6 +30,10 @@ harness = false
 
 [[bench]]
 name = "mvp_srs"
+harness = false
+
+[[bench]]
+name = "micro"
 harness = false
 
 # [[bin]]

@@ -10,3 +10,5 @@ mod splitting_tree;
 
 pub use recsplit::LooseRecSplit;
 pub mod mvp;
+
+pub use hasher::RecHasher;

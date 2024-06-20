@@ -70,7 +70,7 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
     }
 
     /// require: sum of splits == values.len()
-    fn find_split_seed(&self, max_child_size: usize, values: &[impl Hash]) -> usize {
+    pub fn find_split_seed(&self, max_child_size: usize, values: &[impl Hash]) -> usize {
         for i in 0..usize::MAX {
             if i % 10000 == 0 && i != 0 {
                 crate::debug!("finding seed: iteration {i}");
