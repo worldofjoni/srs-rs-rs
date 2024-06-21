@@ -5,10 +5,11 @@ pub use std::println as debug;
 
 mod golomb_rice;
 mod hasher;
+pub mod tphf;
+pub mod mvp;
 mod recsplit;
 mod splitting_tree;
 
 pub use recsplit::LooseRecSplit;
-pub mod mvp;
 
 pub use hasher::RecHasher;
