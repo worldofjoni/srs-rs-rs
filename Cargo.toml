@@ -24,8 +24,9 @@ rand = "0.8.5"
 [features]
 debug_output = []
 
+
 [[bench]]
-name = "search_hash"
+name = "rec_bench"
 harness = false
 
 [[bench]]

@@ -1,11 +1,8 @@
 //! Micro benchmarks
 
-use std::cell::Cell;
-
 use ahash::HashSet;
-use bitvec::vec::BitVec;
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use recsplit::{mvp::MvpBuilder, LooseRecSplit, RecHasher};
+use criterion::{criterion_group, criterion_main, Criterion};
+use recsplit::RecHasher;
 
 fn check_hash_function(c: &mut Criterion) {
     let mut group: criterion::BenchmarkGroup<'_, criterion::measurement::WallTime> =
