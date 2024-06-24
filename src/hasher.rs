@@ -176,6 +176,18 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
         child_sizes == (1 << size) - 1
     }
 
+    pub fn find_bijection_seed<T: Hash>(&self, values: &[T]) -> usize {
+        for i in 0.. {
+            #[cfg(feature = "debug_output")]
+            bij_checked.set(bij_checked.get() + 1);
+
+            if self.is_bijection(i, values) {
+                return i;
+            }
+        }
+        panic!("could not find bijection")
+    }
+
     /// hashes into `0..size`
     pub fn hash_bijection(&self, seed: usize, size: usize, value: &impl Hash) -> usize {
         let mut hasher = self.0.build_hasher();
@@ -240,6 +252,7 @@ const fn const_max(a: usize, b: usize) -> usize {
 
 #[cfg(test)]
 mod test {
+    use ahash::HashSet;
     use rand::random;
 
     use crate::hasher::{const_max, fast_div};
@@ -284,6 +297,32 @@ mod test {
                 "failed for split in {split} with values {values:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_find_bijection() {
+        let hasher = RecHasher(ahash::RandomState::new());
+
+        let size = 12;
+
+        let values = loop {
+            let values = (0..size).map(|_| random::<usize>()).collect::<Vec<_>>();
+            if values.iter().collect::<HashSet<_>>().len() == size {
+                break values;
+            }
+        };
+
+        let seed = hasher.find_bijection_seed(&values);
+
+        let mut result = vec![0; size];
+        values
+            .iter()
+            .for_each(|v| result[hasher.hash_bijection(seed, size, v)] += 1);
+        assert_eq!(
+            result,
+            vec![1; size],
+            "failed for biject on {size} with values {values:?}"
+        );
     }
 
     #[test]
