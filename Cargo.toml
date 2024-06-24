@@ -39,7 +39,7 @@ name = "micro"
 harness = false
 
 # [[bin]]
-# name = "bin"
+# name = "testbin"
 # path = "src/bin.rs"
 
 [profile.release]
