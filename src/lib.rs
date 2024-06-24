@@ -5,7 +5,7 @@ pub use std::println as debug;
 
 mod golomb_rice;
 mod hasher;
-pub mod tphf;
+pub mod rec_tphf;
 pub mod mvp;
 mod recsplit;
 mod splitting_tree;
