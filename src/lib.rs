@@ -13,4 +13,9 @@ mod splitting_tree;
 
 pub use recsplit::LooseRecSplit;
 
+#[cfg(feature = "debug_output")]
+pub use hasher::BIJECTIONS_CHECKED;
+#[cfg(feature = "debug_output")]
+pub use hasher::SPLITS_CHECKED;
+
 pub use hasher::RecHasher;

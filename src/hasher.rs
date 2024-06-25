@@ -79,9 +79,9 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
                 }
 
                 if max_child_size == 1 {
-                    bij_checked.set(bij_checked.get() + 1);
+                    BIJECTIONS_CHECKED.set(BIJECTIONS_CHECKED.get() + 1);
                 } else {
-                    splits_checked.set(splits_checked.get() + 1);
+                    SPLITS_CHECKED.set(SPLITS_CHECKED.get() + 1);
                 }
             }
 
@@ -144,6 +144,9 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
 
         debug_assert!(size <= u32::BITS as usize);
 
+        #[cfg(feature = "debug_output")]
+        BIJECTIONS_CHECKED.set(BIJECTIONS_CHECKED.get() + 1);
+
         let mut child_sizes: u32 = 0;
 
         // thread_local has show to have no performance penalty here...
@@ -178,9 +181,6 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
 
     pub fn find_bijection_seed<T: Hash>(&self, values: &[T]) -> usize {
         for i in 0.. {
-            #[cfg(feature = "debug_output")]
-            bij_checked.set(bij_checked.get() + 1);
-
             if self.is_bijection(i, values) {
                 return i;
             }
@@ -213,8 +213,10 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
 
 #[cfg(feature = "debug_output")]
 thread_local! {
-    pub static splits_checked: std::cell::Cell<usize> = std::cell::Cell::new(0);
-    pub static bij_checked: std::cell::Cell<usize> = std::cell::Cell::new(0);
+    /// Warning: thread_local!
+    pub static SPLITS_CHECKED: std::cell::Cell<usize> = const {std::cell::Cell::new(0)};
+    /// Warning: thread_local!
+    pub static BIJECTIONS_CHECKED: std::cell::Cell<usize> = const {std::cell::Cell::new(0)};
 
 }
 
