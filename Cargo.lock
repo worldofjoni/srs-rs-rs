@@ -544,6 +544,7 @@ dependencies = [
  "gnuplot",
  "log",
  "rand",
+ "rayon",
  "static_assertions",
 ]
 
