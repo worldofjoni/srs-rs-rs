@@ -14,6 +14,7 @@ mod splitting_tree;
 pub mod util;
 
 pub use recsplit::LooseRecSplit;
+pub mod mvp_assembled;
 
 #[cfg(feature = "debug_output")]
 pub use hasher::BIJECTIONS_CHECKED;

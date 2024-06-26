@@ -28,3 +28,8 @@ Replace `my_recursive_funtion` with your recursive function and `<test_name>` wi
 ### asm view
 To view the generated assembly, make sure a binary gets compiles (e.g. main) that includes the wanted code.
 Then you can use `cargo-asm` to run `cargo asm --rust <function name>` to show the assembly of that function
+
+
+## Graph generation
+To generate a graph, run the according test using
+`cargo test --release --all-features -- --ignored --nocapture <test_name>`
