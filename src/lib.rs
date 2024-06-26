@@ -11,6 +11,8 @@ pub mod rec_tphf;
 mod recsplit;
 mod splitting_tree;
 
+pub mod util;
+
 pub use recsplit::LooseRecSplit;
 
 #[cfg(feature = "debug_output")]
@@ -19,10 +21,3 @@ pub use hasher::BIJECTIONS_CHECKED;
 pub use hasher::SPLITS_CHECKED;
 
 pub use hasher::RecHasher;
-
-pub fn get_graphics_path(filename: &str) -> String {
-    use std::fs::DirBuilder;
-    let folder = "target/graphics";
-    DirBuilder::new().recursive(true).create(folder).unwrap();
-    format!("{folder}/{filename}")
-}
