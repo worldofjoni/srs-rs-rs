@@ -99,5 +99,44 @@ fn find_hash_function(c: &mut Criterion) {
     // });
 }
 
-criterion_group!(benches, check_hash_function, find_hash_function);
+fn round_floor(c: &mut Criterion) {
+    let mut group: criterion::BenchmarkGroup<'_, criterion::measurement::WallTime> =
+        c.benchmark_group("round_floor");
+
+    group.bench_function("round", |b| {
+        b.iter_batched(
+            rand::random,
+            |input: f32| input.round() as usize,
+            criterion::BatchSize::SmallInput,
+        )
+    });
+    group.bench_function("round_even", |b| {
+        b.iter_batched(
+            rand::random,
+            |input: f32| input.round_ties_even() as usize,
+            criterion::BatchSize::SmallInput,
+        )
+    });
+    group.bench_function("floor", |b| {
+        b.iter_batched(
+            rand::random,
+            |input: f32| input.floor() as usize,
+            criterion::BatchSize::SmallInput,
+        )
+    });
+    group.bench_function("ceil", |b| {
+        b.iter_batched(
+            rand::random,
+            |input: f32| input.ceil() as usize,
+            criterion::BatchSize::SmallInput,
+        )
+    });
+}
+
+criterion_group!(
+    benches,
+    check_hash_function,
+    find_hash_function,
+    round_floor
+);
 criterion_main!(benches);
