@@ -131,6 +131,13 @@ fn round_floor(c: &mut Criterion) {
             criterion::BatchSize::SmallInput,
         )
     });
+    group.bench_function("manual round", |b| {
+        b.iter_batched(
+            rand::random,
+            |input: f32| (input + 0.5).floor() as usize,
+            criterion::BatchSize::SmallInput,
+        )
+    });
 }
 
 criterion_group!(
