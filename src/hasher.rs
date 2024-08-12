@@ -209,6 +209,32 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
         let hash = hasher.finish() as usize;
         distribute(hash, num_buckets)
     }
+
+    // MPHF with binary splits
+
+    pub fn is_binary_split(&self, seed: usize, values: &[&impl Hash]) -> bool {
+        let size = values.len();
+
+        let mut child_sizes = [0_usize; 2];
+
+        for val in values {
+            let child_idx = self.hash_binary(seed, val);
+            child_sizes[child_idx] += 1;
+        }
+
+        child_sizes[0] == size / 2
+    }
+
+    pub fn hash_binary(&self, seed: usize, value: &impl Hash) -> usize {
+        let mut hasher = self.0.build_hasher();
+
+        hasher.write_usize(seed);
+        value.hash(&mut hasher);
+
+        let hash = hasher.finish() as usize;
+
+        hash & 1
+    }
 }
 
 #[cfg(feature = "debug_output")]

@@ -16,6 +16,8 @@ pub mod util;
 pub use recsplit::LooseRecSplit;
 pub mod mvp_assembled;
 
+pub mod mphf;
+
 #[cfg(feature = "debug_output")]
 pub use hasher::BIJECTIONS_CHECKED;
 #[cfg(feature = "debug_output")]
