@@ -213,8 +213,6 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
     // MPHF with binary splits
 
     pub fn is_binary_split(&self, seed: usize, values: &[&impl Hash]) -> bool {
-        let size = values.len();
-
         let mut child_sizes = [0_usize; 2];
 
         for val in values {
@@ -222,7 +220,7 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
             child_sizes[child_idx] += 1;
         }
 
-        child_sizes[0] == size / 2
+        child_sizes[0] == child_sizes[1]
     }
 
     pub fn hash_binary(&self, seed: usize, value: &impl Hash) -> usize {
@@ -366,5 +364,41 @@ mod test {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_hash_binary() {
+        let hasher = RecHasher(ahash::RandomState::new());
+        let mut nums = [0; 2];
+        for i in 0..1000 {
+            let hash = hasher.hash_binary(101010, &i);
+            nums[hash] += 1;
+        }
+        println!("{nums:?}");
+    }
+
+    #[test]
+    fn test_is_binary_split() {
+        let hasher = RecHasher(ahash::RandomState::new());
+        let size = 100;
+        let values = (0..size).collect::<Vec<_>>();
+        let values = values.iter().collect::<Vec<_>>();
+
+        let mut seed = 0;
+        for seed2 in 0.. {
+            if hasher.is_binary_split(seed2, &values) {
+                seed = seed2;
+                println!("found seed {seed}");
+                break;
+            }
+        }
+
+        let mut nums = [0; 2];
+        for i in values {
+            let hash = hasher.hash_binary(seed, &i);
+            nums[hash] += 1;
+        }
+        println!("{nums:?}");
+        assert_eq!(nums[0], nums[1]);
     }
 }
