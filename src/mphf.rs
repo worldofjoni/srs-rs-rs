@@ -82,7 +82,6 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
     pub fn build(mut self) -> SrsMphf<T, H> {
         let total_bits = Word::BITS as usize
             + sigma(self.data.len() - 1, self.overhead, self.data.len()).ceil() as usize;
-        println!("bits reserved {total_bits}");
         self.full_information.resize(total_bits, false);
 
         for root_seed in 0.. {
@@ -98,8 +97,10 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
                 // }
 
                 self.full_information[..Word::BITS as usize].store_be(root_seed);
+                #[cfg(feature = "debug_output")]
                 println!(
-                    "data: {}",
+                    "data: ({} bit) {}",
+                    self.full_information.len(),
                     self.full_information
                         .iter()
                         .map(|b| usize::from(*b).to_string())

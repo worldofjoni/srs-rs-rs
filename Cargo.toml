@@ -39,6 +39,10 @@ name = "mvp_bench"
 harness = false
 
 [[bench]]
+name = "mphf_bench"
+harness = false
+
+[[bench]]
 name = "micro"
 harness = false
 
