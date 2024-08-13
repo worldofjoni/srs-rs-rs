@@ -8,7 +8,7 @@ use bitvec::{bitvec, field::BitField, order::Msb0, vec::BitVec};
 use crate::RecHasher;
 
 type Word = usize;
-type Float = f32;
+type Float = f64;
 
 pub struct SrsMphf<T: Hash, H: BuildHasher + Clone> {
     _phantom: PhantomData<T>,
@@ -38,15 +38,15 @@ impl<T: Hash> SrsMphf<T, ahash::RandomState> {
             let j_1 = (1 << i) as usize + result;
             let start = sigma(j_1, self.overhead, self.size).ceil() as Word; // + Word::BITS for root - Word::BITS for start
             let seed = self.full_information[start..][..Word::BITS as usize].load_be();
-            println!("level {i}, result {result:b}, accessing seed at {start}");
-            println!("  seed {seed:b}");
+            // println!("level {i}, result {result:b}, accessing seed at {start}");
+            // println!("  seed {seed:b}");
 
             result <<= 1;
             let hash = self.hasher.hash_binary(seed, value);
-            println!("  gotten hash {hash}");
+            // println!("  gotten hash {hash}");
             result |= hash;
         }
-        println!("done {result}");
+        // println!("done {result}");
 
         result
     }
@@ -126,9 +126,9 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
         bit_index: usize,
         fractional_accounted_bits: Float,
     ) -> bool {
-        println!(
-            "task {task_idx_1}, bit index {bit_index}, fract. bits {fractional_accounted_bits}"
-        );
+        // println!(
+        //     "task {task_idx_1}, bit index {bit_index}, fract. bits {fractional_accounted_bits}"
+        // );
         if task_idx_1 == self.data.len() {
             // there are only n-1 nodes in a binary splitting tree
             return true;
@@ -136,20 +136,19 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
 
         let layer = task_idx_1.ilog2();
         let chunk = task_idx_1 - (1 << layer);
-        println!("  layer {layer}, chunk {chunk}");
+        // println!("  layer {layer}, chunk {chunk}");
         let required_bits = self.overhead - calc_log_p(self.data.len() >> layer);
-        println!("  required bits {required_bits}");
+        // println!("  required bits {required_bits}");
 
         let required_bits = required_bits - fractional_accounted_bits;
         let task_bits = required_bits.ceil() as usize; // log2 k
         let new_fractional_accounted_bits = required_bits.ceil() - required_bits;
-        println!("  bits used {task_bits}");
+        // println!("  bits used {task_bits}");
 
         // implicit phi
         for seed in ((parent_seed << task_bits)..).take(1 << task_bits) {
             let layer_size = self.data.len() >> layer;
             let data_slice = &mut self.data[chunk * layer_size..][..layer_size];
-            println!("  slice len {}", data_slice.len());
             // #[cfg(feature = "debug_output")]
             // {
             //     self.stats.bij_tests += 1;
@@ -160,9 +159,10 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
                 .is_binary_split(seed, &data_slice.iter().by_ref().collect::<Vec<_>>())
             // todo does this collect create overhead/allocation?
             {
-                println!("found split: j={task_idx_1} seed={seed}");
-                data_slice.sort_unstable_by_key(|v| self.hasher.hash_binary(seed, v));
-                // todo kth element?
+                // println!("found split: j={task_idx_1} seed={seed}");
+                data_slice.select_nth_unstable_by_key(layer_size / 2, |v| {
+                    self.hasher.hash_binary(seed, v)
+                });
                 // todo sort only after complete layer?
 
                 // #[cfg(feature = "debug_output")]
@@ -224,7 +224,7 @@ mod test {
 
     use std::collections::HashSet;
 
-    use float_cmp::assert_approx_eq;
+    use float_cmp::{assert_approx_eq, F64Margin};
 
     use crate::mphf::{calc_log_p, sigma, Float};
 
@@ -246,11 +246,17 @@ mod test {
         assert_approx_eq!(Float, 0., sigma(0, overhead, size));
         assert_approx_eq!(Float, 2.3582757, sigma(1, overhead, size));
         assert_approx_eq!(Float, 4.2389927, sigma(2, overhead, size));
-        // assert_approx_eq!(Float, 15., sigma(11, overhead, size).ceil()); // why?
+        assert_approx_eq!(Float, 16., sigma(11, overhead, size).ceil());
+    }
+
+    #[test]
+    fn test_sigma_large() {
+        let size = 1 << 7;
+        let overhead = 0.01;
 
         let mut extra_fractional = 0.;
         let mut bits_so_far = 0;
-        for i in 1..size {
+        for i in 1usize..size {
             println!("i={i}");
             let targeted_bits = overhead - calc_log_p(size >> i.ilog2());
             let targeted_bits = targeted_bits - extra_fractional;
@@ -262,7 +268,8 @@ mod test {
             assert_approx_eq!(
                 Float,
                 sigma(i, overhead, size),
-                bits_so_far as Float - extra_fractional
+                bits_so_far as Float - extra_fractional,
+                F64Margin::zero().epsilon(1e-10)
             );
         }
     }
@@ -271,6 +278,32 @@ mod test {
     fn test_create_mphf() {
         let size = 1 << 4;
         let overhead = 0.01;
+        let data = (0..size).collect::<Vec<_>>();
+
+        let mphf = SrsMphf::new_random(&data, overhead);
+        println!("done building! uses {} bits", mphf.bit_size());
+
+        let hashes = (0..size).map(|v| mphf.hash(&v)).collect::<HashSet<_>>();
+        assert_eq!(hashes.len(), size);
+    }
+
+    #[test]
+    fn test_create_large_mphf() {
+        let size = 1 << 10;
+        let overhead = 0.01;
+        let data = (0..size).collect::<Vec<_>>();
+
+        let mphf = SrsMphf::new_random(&data, overhead);
+        println!("done building! uses {} bits", mphf.bit_size());
+
+        let hashes = (0..size).map(|v| mphf.hash(&v)).collect::<HashSet<_>>();
+        assert_eq!(hashes.len(), size);
+    }
+
+    #[test]
+    fn test_create_huge_mphf() {
+        let size = 1 << 12;
+        let overhead = 0.001;
         let data = (0..size).collect::<Vec<_>>();
 
         let mphf = SrsMphf::new_random(&data, overhead);
