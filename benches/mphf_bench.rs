@@ -33,7 +33,7 @@ fn create_many_sizes(c: &mut Criterion) {
 
     const OVERHEAD: f64 = 0.01;
 
-    for size in (0..12).map(|i| 1 << i) {
+    for size in (4..16).map(|i| 1 << i) {
         let data = &(0..size).collect::<Vec<_>>();
 
         group.throughput(criterion::Throughput::Elements(size));

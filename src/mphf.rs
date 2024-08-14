@@ -57,6 +57,10 @@ impl<T: Hash> SrsMphf<T, ahash::RandomState> {
     pub fn bit_size(&self) -> usize {
         self.information.len()
     }
+
+    pub fn bit_per_key(&self) -> f64 {
+        self.information.len() as f64 / self.size as f64
+    }
 }
 
 pub struct MphfBuilder<'a, T: Hash, H: BuildHasher + Clone> {
@@ -67,6 +71,10 @@ pub struct MphfBuilder<'a, T: Hash, H: BuildHasher + Clone> {
     information: BitVec<Word, Msb0>,
     #[cfg(feature = "debug_output")]
     stats: (),
+    #[cfg(feature = "progress")]
+    progress_bar: indicatif::ProgressBar,
+    #[cfg(feature = "progress")]
+    saved_progress: u64,
 }
 
 #[derive(Copy, Clone)]
@@ -84,14 +92,19 @@ struct Started {
 
 impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
     fn new(data: &'a mut [&'a T], overhead: Float, random_state: H) -> Self {
-        assert!(data.len().is_power_of_two());
+        let size = data.len();
+        assert!(size.is_power_of_two());
         Self {
             overhead,
             data,
             hasher: RecHasher(random_state),
-            information: bitvec!(Word, Msb0; 0 ; 0),
+            information: BitVec::EMPTY,
             #[cfg(feature = "debug_output")]
             stats: (),
+            #[cfg(feature = "progress")]
+            progress_bar: indicatif::ProgressBar::new(size.ilog2() as u64),
+            #[cfg(feature = "progress")]
+            saved_progress: 0,
         }
     }
 
@@ -113,13 +126,16 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
                 //     println!("bij tested: {}", self.stats.bij_tests);
                 // }
 
-                // todo unneccesary for iterative?
                 self.information[..Word::BITS as usize].store_be(root_seed);
 
                 #[cfg(feature = "debug_output")]
                 println!(
-                    "data: ({} bit) {}",
+                    "data: {} bit, {} per key, {} bit 'unused', {} per key therewith \n\t{}",
                     self.information.len(),
+                    self.information.len() as f64 / self.data.len() as f64,
+                    self.information.first_one().unwrap(),
+                    (self.information.len() - self.information.first_one().unwrap()) as f64
+                        / self.data.len() as f64,
                     self.information
                         .iter()
                         .map(|b| usize::from(*b).to_string())
@@ -161,6 +177,14 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
             let new_fractional_accounted_bits = required_bits.ceil() - required_bits;
             // println!("task {task_idx_1}, required {required_bits} bit, task bits {task_bit_count}, resuming after? {:?}",
             // frame.started.map(|s| s.current_index));
+
+            #[cfg(feature = "progress")]
+            {
+                if self.saved_progress != layer as u64 {
+                    self.progress_bar.set_position(layer as u64);
+                    self.saved_progress = layer as u64;
+                }
+            }
 
             for seed in ((frame.parent_seed << task_bit_count)..)
                 .take(1 << task_bit_count)
@@ -375,7 +399,11 @@ mod test {
         let data = (0..size).collect::<Vec<_>>();
 
         let mphf = SrsMphf::new_random(&data, overhead);
-        println!("done building! uses {} bits", mphf.bit_size());
+        println!(
+            "done building! uses {} bits, {} per key",
+            mphf.bit_size(),
+            mphf.bit_per_key()
+        );
 
         let hashes = (0..size).map(|v| mphf.hash(&v)).collect::<HashSet<_>>();
         assert_eq!(hashes.len(), size);
@@ -383,12 +411,16 @@ mod test {
 
     #[test]
     fn test_create_large_mphf() {
-        let size = 1 << 10;
+        let size = 1 << 12;
         let overhead = 0.01;
         let data = (0..size).collect::<Vec<_>>();
 
         let mphf = SrsMphf::new_random(&data, overhead);
-        println!("done building! uses {} bits", mphf.bit_size());
+        println!(
+            "done building! uses {} bits, {} per key",
+            mphf.bit_size(),
+            mphf.bit_per_key()
+        );
 
         let hashes = (0..size).map(|v| mphf.hash(&v)).collect::<HashSet<_>>();
         assert_eq!(hashes.len(), size);
@@ -396,12 +428,16 @@ mod test {
 
     #[test]
     fn test_create_huge_mphf() {
-        let size = 1 << 12;
+        let size = 1 << 16;
         let overhead = 0.001;
         let data = (0..size).collect::<Vec<_>>();
 
         let mphf = SrsMphf::new_random(&data, overhead);
-        println!("done building! uses {} bits", mphf.bit_size());
+        println!(
+            "done building! uses {} bits, {} per key",
+            mphf.bit_size(),
+            mphf.bit_per_key()
+        );
 
         let hashes = (0..size).map(|v| mphf.hash(&v)).collect::<HashSet<_>>();
         assert_eq!(hashes.len(), size);
