@@ -272,9 +272,20 @@ fn get_log_p(n: usize) -> Float {
     })
 }
 
-// todo optimize
+
 fn sigma(j: usize, overhead: Float, size: usize) -> Float {
-    j as Float * overhead - (1..=j).map(|j| get_log_p(size >> j.ilog2())).sum::<Float>()
+    if j == 0 {
+        return 0.;
+    }
+
+    let layer = j.ilog2();
+    let chunk = j - (1 << layer); // starts with 0
+
+    j as Float * overhead
+        - (0..layer)
+            .map(|i| (1 << i) as Float * get_log_p(size >> i))
+            .sum::<Float>()
+        - (chunk + 1) as Float * get_log_p(size >> layer)
 }
 
 #[cfg(test)]
@@ -292,9 +303,9 @@ mod test {
     fn test_calc_log_p() {
         assert_approx_eq!(Float, 0., calc_log_p(1));
         assert_approx_eq!(Float, -1., calc_log_p(2));
-        assert_approx_eq!(Float, -1.4150375, calc_log_p(4));
-        assert_approx_eq!(Float, -1.8707169, calc_log_p(8));
-        assert_approx_eq!(Float, -2.3482757, calc_log_p(16));
+        assert_approx_eq!(Float, -1.415037499278844, calc_log_p(4));
+        assert_approx_eq!(Float, -1.8707169830550336, calc_log_p(8));
+        assert_approx_eq!(Float, -2.348275566891936, calc_log_p(16));
     }
 
     #[test]
@@ -302,8 +313,8 @@ mod test {
         let size = 1 << 4;
         let overhead = 0.01;
         assert_approx_eq!(Float, 0., sigma(0, overhead, size));
-        assert_approx_eq!(Float, 2.3582757, sigma(1, overhead, size));
-        assert_approx_eq!(Float, 4.2389927, sigma(2, overhead, size));
+        assert_approx_eq!(Float, 2.358275566891936, sigma(1, overhead, size));
+        assert_approx_eq!(Float, 4.238992549946969, sigma(2, overhead, size));
         assert_approx_eq!(Float, 16., sigma(11, overhead, size).ceil());
     }
 

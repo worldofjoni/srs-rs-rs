@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, PlotConfiguration};
+use rand::random;
 use recsplit::mphf::SrsMphf;
 
 fn create_mphf_single(c: &mut Criterion) {
@@ -72,5 +73,26 @@ fn create_many_eps(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, create_mphf_single, create_many_sizes, create_many_eps);
+fn hash(c: &mut Criterion) {
+    let mut group = c.benchmark_group("hash srs mphf");
+    group.measurement_time(Duration::from_secs(10));
+    group.sample_size(10);
+
+    let size = 1 << 12;
+    let overhead = 0.01;
+    let data = &(0..size).collect::<Vec<_>>();
+    let mphf = SrsMphf::new_random(data, overhead);
+
+    group.bench_with_input("hash", &mphf, |b, mphf| {
+        b.iter_batched(random, |i| mphf.hash(&i), criterion::BatchSize::SmallInput)
+    });
+}
+
+criterion_group!(
+    benches,
+    create_mphf_single,
+    create_many_sizes,
+    create_many_eps,
+    hash
+);
 criterion_main!(benches);
