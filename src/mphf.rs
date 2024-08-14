@@ -3,7 +3,7 @@ use std::{
     marker::PhantomData,
 };
 
-use bitvec::{bitvec, field::BitField, order::Msb0, vec::BitVec};
+use bitvec::{field::BitField, order::Msb0, vec::BitVec};
 
 use crate::RecHasher;
 
@@ -114,8 +114,7 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
         self.information.resize(total_bits, false);
 
         for root_seed in 0.. {
-            // if self.find_seed_task(1, root_seed, Word::BITS as usize, 0.) {
-            if self.iterative(root_seed) {
+            if self.srs_search_iterative(root_seed) {
                 // #[cfg(feature = "debug_output")]
                 // {
                 //     println!(
@@ -155,7 +154,7 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
         panic!("No MPHF found!")
     }
 
-    fn iterative(&mut self, root_seed: Word) -> bool {
+    fn srs_search_iterative(&mut self, root_seed: Word) -> bool {
         let num_tasks = self.data.len() - 1;
         let mut stack = Vec::<TaskState>::with_capacity(num_tasks);
 
@@ -175,6 +174,7 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
             let required_bits = required_bits - frame.fractional_accounted_bits;
             let task_bit_count = required_bits.ceil() as usize; // log2 k
             let new_fractional_accounted_bits = required_bits.ceil() - required_bits;
+
             // println!("task {task_idx_1}, required {required_bits} bit, task bits {task_bit_count}, resuming after? {:?}",
             // frame.started.map(|s| s.current_index));
 
@@ -241,74 +241,6 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
         }
     }
 
-    fn find_seed_task(
-        &mut self,
-        task_idx_1: usize, // one-based
-        parent_seed: Word,
-        bit_index: usize,
-        fractional_accounted_bits: Float,
-    ) -> bool {
-        // println!(
-        //     "task {task_idx_1}, bit index {bit_index}, fract. bits {fractional_accounted_bits}"
-        // );
-        if task_idx_1 == self.data.len() {
-            // there are only n-1 nodes in a binary splitting tree
-            return true;
-        }
-
-        let layer = task_idx_1.ilog2();
-        let chunk = task_idx_1 - (1 << layer);
-        // println!("  layer {layer}, chunk {chunk}");
-        let required_bits = self.overhead - calc_log_p(self.data.len() >> layer);
-        // println!("  required bits {required_bits}");
-
-        let required_bits = required_bits - fractional_accounted_bits;
-        let task_bits = required_bits.ceil() as usize; // log2 k
-        let new_fractional_accounted_bits = required_bits.ceil() - required_bits;
-        // println!("  bits used {task_bits}");
-
-        // implicit phi
-        for seed in ((parent_seed << task_bits)..).take(1 << task_bits) {
-            let layer_size = self.data.len() >> layer;
-            let data_slice = &mut self.data[chunk * layer_size..][..layer_size];
-            // #[cfg(feature = "debug_output")]
-            // {
-            //     self.stats.bij_tests += 1;
-            // }
-            #[allow(clippy::collapsible_if)]
-            if self.hasher.is_binary_split(seed, data_slice) {
-                // println!("found split: j={task_idx_1} seed={seed}");
-                data_slice.select_nth_unstable_by_key(layer_size / 2, |v| {
-                    self.hasher.hash_binary(seed, v)
-                });
-                // todo sort only after complete layer?
-
-                // #[cfg(feature = "debug_output")]
-                // {
-                //     self.stats.num_bijections_found[bucket_idx_1 - 1] += 1;
-                // }
-
-                if self.find_seed_task(
-                    task_idx_1 + 1,
-                    seed,
-                    bit_index + task_bits,
-                    new_fractional_accounted_bits,
-                ) {
-                    let index = seed & ((1 << task_bits) - 1);
-                    self.information[bit_index..][..task_bits].store_be(index);
-                    return true;
-                }
-            }
-        }
-        // #[cfg(feature = "debug_output")]
-        // {
-        //     self.stats.unsuccessful_ret += 1;
-        // }
-
-        false
-    }
-
-    // fn build_layer(layer: usize)
 }
 
 /// n: size where to search binary splitting
@@ -322,19 +254,12 @@ fn calc_log_p(n: usize) -> Float {
         .sum()
 }
 
-// /// returns (bits for task, new extra factional)
-// fn calc_bits_for_task(extra_fractional: Float, required: Float) -> (usize, Float) {
-//     let used = (required - extra_fractional).ceil();
-//     let new_extra_fractional = used - required;
-//     (used as usize, new_extra_fractional)
-// }
+
+
 
 // todo optimize
 fn sigma(j: usize, overhead: Float, size: usize) -> Float {
-    j as Float * overhead
-        - (1..=j)
-            .map(|j| calc_log_p(size >> j.ilog2()))
-            .sum::<Float>()
+    j as Float * overhead - (1..=j).map(|j| calc_log_p(size >> j.ilog2())).sum::<Float>()
 }
 
 #[cfg(test)]
@@ -429,7 +354,7 @@ mod test {
     #[test]
     fn test_create_huge_mphf() {
         let size = 1 << 16;
-        let overhead = 0.001;
+        let overhead = 0.01;
         let data = (0..size).collect::<Vec<_>>();
 
         let mphf = SrsMphf::new_random(&data, overhead);
@@ -441,5 +366,15 @@ mod test {
 
         let hashes = (0..size).map(|v| mphf.hash(&v)).collect::<HashSet<_>>();
         assert_eq!(hashes.len(), size);
+    }
+
+    #[test]
+    #[ignore]
+    fn create_mphf_flame() {
+        let size = 1 << 16;
+        let overhead = 0.01;
+        let data = (0..size).collect::<Vec<_>>();
+
+        SrsMphf::new_random(&data, overhead);
     }
 }
