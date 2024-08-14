@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     hash::{BuildHasher, Hash},
     marker::PhantomData,
 };
@@ -169,7 +170,7 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
 
             let layer = task_idx_1.ilog2();
             let chunk = task_idx_1 - (1 << layer);
-            let required_bits = self.overhead - calc_log_p(self.data.len() >> layer);
+            let required_bits = self.overhead - get_log_p(self.data.len() >> layer);
 
             let required_bits = required_bits - frame.fractional_accounted_bits;
             let task_bit_count = required_bits.ceil() as usize; // log2 k
@@ -240,11 +241,9 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
             working_slice = &mut working_slice[started.task_bit_count..];
         }
     }
-
 }
 
 /// n: size where to search binary splitting
-// todo cache
 fn calc_log_p(n: usize) -> Float {
     assert!(n.is_power_of_two(), "n={n}");
     // todo stirling good enough?
@@ -254,12 +253,28 @@ fn calc_log_p(n: usize) -> Float {
         .sum()
 }
 
+fn get_log_p(n: usize) -> Float {
+    assert!(n.is_power_of_two(), "n={n}");
+    let power = n.ilog2() as usize;
 
+    thread_local! {
+        static LOG_P_LAYER: RefCell<Vec<Float>> = const {RefCell::new(Vec::new())};
+    }
 
+    LOG_P_LAYER.with_borrow_mut(|cache| {
+        if cache.len() < power {
+            cache.reserve(power - cache.len() + 1);
+            for i in cache.len()..=power {
+                cache.push(calc_log_p(1 << i));
+            }
+        }
+        cache[power]
+    })
+}
 
 // todo optimize
 fn sigma(j: usize, overhead: Float, size: usize) -> Float {
-    j as Float * overhead - (1..=j).map(|j| calc_log_p(size >> j.ilog2())).sum::<Float>()
+    j as Float * overhead - (1..=j).map(|j| get_log_p(size >> j.ilog2())).sum::<Float>()
 }
 
 #[cfg(test)]
