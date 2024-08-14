@@ -29,6 +29,7 @@ Replace `my_recursive_funtion` with your recursive function and `<test_name>` wi
 To view the generated assembly, make sure a binary gets compiles (e.g. main) that includes the wanted code.
 Then you can use `cargo-asm` to run `cargo asm --rust <function name>` to show the assembly of that function
 
+Rebuilding the desired binary and/or cleaning the release directory may help if a function is not found. It also may be inlined aggressively. Search for the binary entry function.
 
 ## Graph generation
 To generate a graph, run the according test using
