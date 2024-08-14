@@ -114,8 +114,9 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
             + sigma(self.data.len() - 1, self.overhead, self.data.len()).ceil() as usize;
         self.information.resize(total_bits, false);
 
+        let mut stack = Vec::<TaskState>::with_capacity(self.data.len() - 1);
         for root_seed in 0.. {
-            if self.srs_search_iterative(root_seed) {
+            if self.srs_search_iterative(root_seed, &mut stack) {
                 // #[cfg(feature = "debug_output")]
                 // {
                 //     println!(
@@ -155,9 +156,9 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
         panic!("No MPHF found!")
     }
 
-    fn srs_search_iterative(&mut self, root_seed: Word) -> bool {
+    fn srs_search_iterative(&mut self, root_seed: Word, stack: &mut Vec<TaskState>) -> bool {
         let num_tasks = self.data.len() - 1;
-        let mut stack = Vec::<TaskState>::with_capacity(num_tasks);
+        stack.clear();
 
         stack.push(TaskState {
             parent_seed: root_seed,
@@ -230,12 +231,12 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
         false
     }
 
-    fn load_indices_from_stack(&mut self, stack: Vec<TaskState>) {
+    fn load_indices_from_stack(&mut self, stack: &[TaskState]) {
         assert_eq!(stack.len(), self.data.len() - 1);
 
         let mut working_slice = &mut self.information[Word::BITS as usize..];
 
-        for TaskState { started, .. } in stack.into_iter() {
+        for TaskState { started, .. } in stack {
             let started = started.expect("all started");
             working_slice[..started.task_bit_count].store_be(started.current_index);
             working_slice = &mut working_slice[started.task_bit_count..];
@@ -271,7 +272,6 @@ fn get_log_p(n: usize) -> Float {
         cache[power]
     })
 }
-
 
 fn sigma(j: usize, overhead: Float, size: usize) -> Float {
     if j == 0 {
@@ -380,7 +380,24 @@ mod test {
     #[test]
     fn test_create_huge_mphf() {
         let size = 1 << 16;
-        let overhead = 0.01;
+        let overhead = 0.001; // attention: this is _smaller_ than for the other tests!
+        let data = (0..size).collect::<Vec<_>>();
+
+        let mphf = SrsMphf::new_random(&data, overhead);
+        println!(
+            "done building! uses {} bits, {} per key",
+            mphf.bit_size(),
+            mphf.bit_per_key()
+        );
+
+        let hashes = (0..size).map(|v| mphf.hash(&v)).collect::<HashSet<_>>();
+        assert_eq!(hashes.len(), size);
+    }
+
+    #[test]
+    fn test_create_huge_easy_mphf() {
+        let size = 1 << 20;
+        let overhead = 0.5; // attention: this is _larger_ than for the other tests!
         let data = (0..size).collect::<Vec<_>>();
 
         let mphf = SrsMphf::new_random(&data, overhead);

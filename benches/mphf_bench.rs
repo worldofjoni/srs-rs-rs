@@ -27,6 +27,26 @@ fn create_mphf_single(c: &mut Criterion) {
     group.finish();
 }
 
+fn create_mphf_large(c: &mut Criterion) {
+    let mut group = c.benchmark_group("create single large srs mphf (size = 65536)");
+
+    const SIZE: usize = 1 << 14;
+    const OVERHEAD: f64 = 0.01;
+
+    group.warm_up_time(Duration::from_secs(10));
+    group.sample_size(100);
+
+    let data = &(0..SIZE).collect::<Vec<_>>();
+
+    group.bench_with_input("create", &data, |b, input| {
+        b.iter(|| {
+            SrsMphf::new_random(input, OVERHEAD);
+        })
+    });
+
+    group.finish();
+}
+
 fn create_many_sizes(c: &mut Criterion) {
     let mut group = c.benchmark_group("crate multiple mphf with different sizes");
     group.measurement_time(Duration::from_secs(10));
@@ -91,6 +111,7 @@ fn hash(c: &mut Criterion) {
 criterion_group!(
     benches,
     create_mphf_single,
+    create_mphf_large,
     create_many_sizes,
     create_many_eps,
     hash
