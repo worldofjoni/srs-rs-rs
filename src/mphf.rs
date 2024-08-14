@@ -2,6 +2,7 @@ use std::{
     cell::RefCell,
     hash::{BuildHasher, Hash},
     marker::PhantomData,
+    num::NonZeroU32,
 };
 
 use bitvec::{field::BitField, order::Msb0, vec::BitVec};
@@ -87,8 +88,8 @@ struct TaskState {
 /// Information only available after started
 #[derive(Copy, Clone)]
 struct Started {
-    current_index: usize,
-    task_bit_count: usize,
+    task_bit_count: NonZeroU32,
+    current_index: u32,
 }
 
 impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
@@ -190,7 +191,12 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
 
             for seed in ((frame.parent_seed << task_bit_count)..)
                 .take(1 << task_bit_count)
-                .skip(frame.started.map(|s| s.current_index + 1).unwrap_or(0))
+                .skip(
+                    frame
+                        .started
+                        .map(|s| s.current_index as usize + 1)
+                        .unwrap_or(0),
+                )
             {
                 let layer_size = self.data.len() >> layer;
                 let data_slice = &mut self.data[chunk * layer_size..][..layer_size];
@@ -203,8 +209,12 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
                     let index = seed - (frame.parent_seed << task_bit_count);
                     let last = stack.last_mut().expect("exists");
                     last.started = Some(Started {
-                        current_index: index,
-                        task_bit_count,
+                        current_index: index.try_into().expect("indices are small enough"),
+                        task_bit_count: task_bit_count
+                            .try_into()
+                            .ok()
+                            .and_then(NonZeroU32::new)
+                            .expect("task bit count in expected range"),
                     });
 
                     // println!("  found at index {index}");
@@ -238,8 +248,9 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
 
         for TaskState { started, .. } in stack {
             let started = started.expect("all started");
-            working_slice[..started.task_bit_count].store_be(started.current_index);
-            working_slice = &mut working_slice[started.task_bit_count..];
+            let task_bit_count = started.task_bit_count.get() as usize;
+            working_slice[..task_bit_count].store_be(started.current_index);
+            working_slice = &mut working_slice[task_bit_count..];
         }
     }
 }
