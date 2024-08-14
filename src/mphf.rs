@@ -14,7 +14,7 @@ pub struct SrsMphf<T: Hash, H: BuildHasher + Clone> {
     _phantom: PhantomData<T>,
     hasher: RecHasher<H>,
     /// includes root seed
-    full_information: BitVec<Word, Msb0>,
+    information: BitVec<Word, Msb0>,
     size: usize,
     overhead: Float,
     #[cfg(feature = "debug_output")]
@@ -36,8 +36,11 @@ impl<T: Hash> SrsMphf<T, ahash::RandomState> {
         let mut result = 0;
         for i in 0..self.size.ilog2() {
             let j_1 = (1 << i) as usize + result;
-            let start = sigma(j_1, self.overhead, self.size).ceil() as Word; // + Word::BITS for root - Word::BITS for start
-            let seed = self.full_information[start..][..Word::BITS as usize].load_be();
+
+            let start = sigma(j_1, self.overhead, self.size).ceil() as Word;
+            // + Word::BITS for root - Word::BITS for start
+
+            let seed = self.information[start..][..Word::BITS as usize].load_be();
             // println!("level {i}, result {result:b}, accessing seed at {start}");
             // println!("  seed {seed:b}");
 
@@ -52,7 +55,7 @@ impl<T: Hash> SrsMphf<T, ahash::RandomState> {
     }
 
     pub fn bit_size(&self) -> usize {
-        self.full_information.len()
+        self.information.len()
     }
 }
 
@@ -61,9 +64,22 @@ pub struct MphfBuilder<'a, T: Hash, H: BuildHasher + Clone> {
     /// extra bits per task: overhead=log(1+eps)
     overhead: Float,
     hasher: RecHasher<H>,
-    full_information: BitVec<Word, Msb0>,
+    information: BitVec<Word, Msb0>,
     #[cfg(feature = "debug_output")]
     stats: (),
+}
+
+#[derive(Copy, Clone)]
+struct TaskState {
+    parent_seed: Word, // todo avoidable?
+    fractional_accounted_bits: Float,
+    started: Option<Started>,
+}
+/// Information only available after started
+#[derive(Copy, Clone)]
+struct Started {
+    current_index: usize,
+    task_bit_count: usize,
 }
 
 impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
@@ -73,7 +89,7 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
             overhead,
             data,
             hasher: RecHasher(random_state),
-            full_information: bitvec!(Word, Msb0; 0 ; 0),
+            information: bitvec!(Word, Msb0; 0 ; 0),
             #[cfg(feature = "debug_output")]
             stats: (),
         }
@@ -82,10 +98,11 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
     pub fn build(mut self) -> SrsMphf<T, H> {
         let total_bits = Word::BITS as usize
             + sigma(self.data.len() - 1, self.overhead, self.data.len()).ceil() as usize;
-        self.full_information.resize(total_bits, false);
+        self.information.resize(total_bits, false);
 
         for root_seed in 0.. {
-            if self.find_seed_task(1, root_seed, Word::BITS as usize, 0.) {
+            // if self.find_seed_task(1, root_seed, Word::BITS as usize, 0.) {
+            if self.iterative(root_seed) {
                 // #[cfg(feature = "debug_output")]
                 // {
                 //     println!(
@@ -96,12 +113,14 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
                 //     println!("bij tested: {}", self.stats.bij_tests);
                 // }
 
-                self.full_information[..Word::BITS as usize].store_be(root_seed);
+                // todo unneccesary for iterative?
+                self.information[..Word::BITS as usize].store_be(root_seed);
+
                 #[cfg(feature = "debug_output")]
                 println!(
                     "data: ({} bit) {}",
-                    self.full_information.len(),
-                    self.full_information
+                    self.information.len(),
+                    self.information
                         .iter()
                         .map(|b| usize::from(*b).to_string())
                         .collect::<String>()
@@ -110,7 +129,7 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
                     size: self.data.len(),
                     _phantom: PhantomData,
                     hasher: self.hasher,
-                    full_information: self.full_information,
+                    information: self.information,
                     overhead: self.overhead,
                     #[cfg(feature = "debug_output")]
                     stats: self.stats,
@@ -120,7 +139,85 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
         panic!("No MPHF found!")
     }
 
-    pub fn find_seed_task(
+    fn iterative(&mut self, root_seed: Word) -> bool {
+        let num_tasks = self.data.len() - 1;
+        let mut stack = Vec::<TaskState>::with_capacity(num_tasks);
+
+        stack.push(TaskState {
+            parent_seed: root_seed,
+            fractional_accounted_bits: 0.,
+            started: None,
+        });
+
+        'main: while let Some(frame) = stack.last().copied() {
+            let task_idx_1 = stack.len();
+
+            let layer = task_idx_1.ilog2();
+            let chunk = task_idx_1 - (1 << layer);
+            let required_bits = self.overhead - calc_log_p(self.data.len() >> layer);
+
+            let required_bits = required_bits - frame.fractional_accounted_bits;
+            let task_bit_count = required_bits.ceil() as usize; // log2 k
+            let new_fractional_accounted_bits = required_bits.ceil() - required_bits;
+            // println!("task {task_idx_1}, required {required_bits} bit, task bits {task_bit_count}, resuming after? {:?}",
+            // frame.started.map(|s| s.current_index));
+
+            for seed in ((frame.parent_seed << task_bit_count)..)
+                .take(1 << task_bit_count)
+                .skip(frame.started.map(|s| s.current_index + 1).unwrap_or(0))
+            {
+                let layer_size = self.data.len() >> layer;
+                let data_slice = &mut self.data[chunk * layer_size..][..layer_size];
+
+                if self.hasher.is_binary_split(seed, data_slice) {
+                    data_slice.select_nth_unstable_by_key(layer_size / 2, |v| {
+                        self.hasher.hash_binary(seed, v)
+                    });
+
+                    let index = seed - (frame.parent_seed << task_bit_count);
+                    let last = stack.last_mut().expect("exists");
+                    last.started = Some(Started {
+                        current_index: index,
+                        task_bit_count,
+                    });
+
+                    // println!("  found at index {index}");
+
+                    if task_idx_1 == num_tasks {
+                        self.load_indices_from_stack(stack);
+                        return true;
+                    }
+
+                    // recurse
+                    stack.push(TaskState {
+                        parent_seed: seed,
+                        fractional_accounted_bits: new_fractional_accounted_bits,
+                        started: None,
+                    });
+                    continue 'main;
+                }
+            }
+
+            // backtrack
+            stack.pop();
+        }
+
+        false
+    }
+
+    fn load_indices_from_stack(&mut self, stack: Vec<TaskState>) {
+        assert_eq!(stack.len(), self.data.len() - 1);
+
+        let mut working_slice = &mut self.information[Word::BITS as usize..];
+
+        for TaskState { started, .. } in stack.into_iter() {
+            let started = started.expect("all started");
+            working_slice[..started.task_bit_count].store_be(started.current_index);
+            working_slice = &mut working_slice[started.task_bit_count..];
+        }
+    }
+
+    fn find_seed_task(
         &mut self,
         task_idx_1: usize, // one-based
         parent_seed: Word,
@@ -155,11 +252,7 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
             //     self.stats.bij_tests += 1;
             // }
             #[allow(clippy::collapsible_if)]
-            if self
-                .hasher
-                .is_binary_split(seed, &data_slice.iter().by_ref().collect::<Vec<_>>())
-            // todo does this collect create overhead/allocation?
-            {
+            if self.hasher.is_binary_split(seed, data_slice) {
                 // println!("found split: j={task_idx_1} seed={seed}");
                 data_slice.select_nth_unstable_by_key(layer_size / 2, |v| {
                     self.hasher.hash_binary(seed, v)
@@ -178,7 +271,7 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
                     new_fractional_accounted_bits,
                 ) {
                     let index = seed & ((1 << task_bits) - 1);
-                    self.full_information[bit_index..][..task_bits].store_be(index);
+                    self.information[bit_index..][..task_bits].store_be(index);
                     return true;
                 }
             }
@@ -278,7 +371,7 @@ mod test {
     #[test]
     fn test_create_mphf() {
         let size = 1 << 4;
-        let overhead = 0.01;
+        let overhead = 0.1;
         let data = (0..size).collect::<Vec<_>>();
 
         let mphf = SrsMphf::new_random(&data, overhead);
