@@ -19,6 +19,7 @@ log = "0.4.21"
 rand = "0.8.5"
 rayon = "1.10.0"
 static_assertions = "1.1.0"
+wyhash2 = "0.2.1"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }

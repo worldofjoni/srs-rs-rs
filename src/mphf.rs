@@ -29,9 +29,9 @@ impl<T: Hash, H: BuildHasher + Clone> SrsMphf<T, H> {
     }
 }
 
-impl<T: Hash> SrsMphf<T, ahash::RandomState> {
+impl<T: Hash> SrsMphf<T, wyhash2::WyHash> {
     pub fn new_random(data: &[T], overhead: Float) -> Self {
-        Self::with_state(data, overhead, ahash::RandomState::new())
+        Self::with_state(data, overhead, wyhash2::WyHash::with_seed(rand::random()))
     }
 
     pub fn hash(&self, value: &T) -> usize {

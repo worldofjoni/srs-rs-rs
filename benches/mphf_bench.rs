@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, PlotConfiguration};
 use rand::random;
-use recsplit::mphf::{determine_mvp_bits_per_key, determine_mvp_space_usage, SrsMphf};
+use recsplit::mphf::{determine_mvp_bits_per_key,  SrsMphf};
 
 fn create_mphf_single(c: &mut Criterion) {
     let mut group = c.benchmark_group("create single srs mphf (size = 1024)");
