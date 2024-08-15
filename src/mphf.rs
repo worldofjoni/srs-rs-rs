@@ -284,7 +284,7 @@ fn get_log_p(n: usize) -> Float {
     }
 
     LOG_P_LAYER.with_borrow_mut(|cache| {
-        if cache.len() < power {
+        if cache.len() <= power {
             cache.reserve(power - cache.len() + 1);
             for i in cache.len()..=power {
                 cache.push(calc_log_p(1 << i));
@@ -320,7 +320,7 @@ mod test {
         calc_log_p, determine_mvp_bits_per_key, determine_mvp_space_usage, sigma, Float,
     };
 
-    use super::SrsMphf;
+    use super::{get_log_p, SrsMphf};
 
     #[test]
     fn test_calc_log_p() {
@@ -329,6 +329,13 @@ mod test {
         assert_approx_eq!(Float, -1.415037499278844, calc_log_p(4));
         assert_approx_eq!(Float, -1.8707169830550336, calc_log_p(8));
         assert_approx_eq!(Float, -2.348275566891936, calc_log_p(16));
+    }
+
+    #[test]
+    fn test_get_log_p() {
+        for i in [0, 2, 5, 4, 7, 9] {
+            get_log_p(1 << i);
+        }
     }
 
     #[test]

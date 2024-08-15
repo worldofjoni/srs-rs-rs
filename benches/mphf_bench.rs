@@ -119,7 +119,7 @@ fn pareto(c: &mut Criterion) {
     let data = &(0..size).map(|i| i.to_string()).collect::<Vec<_>>();
 
     group.throughput(criterion::Throughput::Elements(size as u64));
-    for overhead in [1., 0.5, 0.1, 0.01, 0.001] {
+    for overhead in [1., 0.5, 0.2, 0.1, 0.01, 0.001] {
         group.bench_with_input(
             BenchmarkId::new(size.to_string(), determine_mvp_bits_per_key(size, overhead)),
             data,
