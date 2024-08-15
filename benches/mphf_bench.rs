@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, PlotConfiguration};
 use rand::random;
-use recsplit::mphf::SrsMphf;
+use recsplit::mphf::{determine_mvp_bits_per_key, determine_mvp_space_usage, SrsMphf};
 
 fn create_mphf_single(c: &mut Criterion) {
     let mut group = c.benchmark_group("create single srs mphf (size = 1024)");
@@ -108,12 +108,39 @@ fn hash(c: &mut Criterion) {
     });
 }
 
+fn pareto(c: &mut Criterion) {
+    let mut group = c.benchmark_group("mphf pareto");
+    group.measurement_time(Duration::from_secs(3));
+    group.sample_size(10);
+    group
+        .plot_config(PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic));
+
+    let size = 1 << 15;
+    let data = &(0..size).map(|i| i.to_string()).collect::<Vec<_>>();
+
+    group.throughput(criterion::Throughput::Elements(size as u64));
+    for overhead in [1., 0.5, 0.1, 0.01, 0.001] {
+        group.bench_with_input(
+            BenchmarkId::new(size.to_string(), determine_mvp_bits_per_key(size, overhead)),
+            data,
+            |b, input| {
+                b.iter(|| {
+                    SrsMphf::new_random(input, overhead);
+                })
+            },
+        );
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     create_mphf_single,
     create_mphf_large,
     create_many_sizes,
     create_many_eps,
-    hash
+    hash,
+    pareto,
 );
 criterion_main!(benches);

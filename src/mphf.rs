@@ -65,6 +65,16 @@ impl<T: Hash> SrsMphf<T, ahash::RandomState> {
     }
 }
 
+/// determine how many bits would be used
+pub fn determine_mvp_space_usage(num_elements: usize, overhead: Float) -> usize {
+    sigma(num_elements, overhead, num_elements).ceil() as usize + Word::BITS as usize
+}
+/// determine how many bits per key would be used
+pub fn determine_mvp_bits_per_key(num_elements: usize, overhead: Float) -> Float {
+    (sigma(num_elements, overhead, num_elements).ceil() + Word::BITS as Float)
+        / num_elements as Float
+}
+
 pub struct MphfBuilder<'a, T: Hash, H: BuildHasher + Clone> {
     data: &'a mut [&'a T],
     /// extra bits per task: overhead=log(1+eps)
@@ -306,7 +316,9 @@ mod test {
 
     use float_cmp::{assert_approx_eq, F64Margin};
 
-    use crate::mphf::{calc_log_p, sigma, Float};
+    use crate::mphf::{
+        calc_log_p, determine_mvp_bits_per_key, determine_mvp_space_usage, sigma, Float,
+    };
 
     use super::SrsMphf;
 
@@ -352,6 +364,21 @@ mod test {
                 F64Margin::zero().epsilon(1e-10)
             );
         }
+    }
+
+    #[test]
+    fn test_bit_precalcs() {
+        let size = 1 << 10;
+        let overhead = 0.1;
+        assert_eq!(
+            SrsMphf::new_random(&(0..size).collect::<Vec<_>>(), overhead).bit_size(),
+            determine_mvp_space_usage(size, overhead)
+        );
+        assert_approx_eq!(
+            Float,
+            SrsMphf::new_random(&(0..size).collect::<Vec<_>>(), overhead).bit_per_key(),
+            determine_mvp_bits_per_key(size, overhead)
+        );
     }
 
     #[test]
