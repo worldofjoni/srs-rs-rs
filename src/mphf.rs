@@ -6,13 +6,15 @@ use std::{
 };
 
 use bitvec::{field::BitField, order::Msb0, vec::BitVec};
+use rand::random;
 
 use crate::RecHasher;
 
 type Word = usize;
 type Float = f64;
+type DefaultHash = wyhash2::WyHash;
 
-pub struct SrsMphf<T: Hash, H: BuildHasher + Clone> {
+pub struct SrsMphf<T: Hash, H: BuildHasher + Clone = DefaultHash> {
     _phantom: PhantomData<T>,
     hasher: RecHasher<H>,
     /// includes root seed
@@ -29,9 +31,9 @@ impl<T: Hash, H: BuildHasher + Clone> SrsMphf<T, H> {
     }
 }
 
-impl<T: Hash> SrsMphf<T, wyhash2::WyHash> {
+impl<T: Hash> SrsMphf<T> {
     pub fn new_random(data: &[T], overhead: Float) -> Self {
-        Self::with_state(data, overhead, wyhash2::WyHash::with_seed(rand::random()))
+        Self::with_state(data, overhead, DefaultHash::default())
     }
 
     pub fn hash(&self, value: &T) -> usize {
@@ -284,7 +286,7 @@ fn get_log_p(n: usize) -> Float {
     }
 
     LOG_P_LAYER.with_borrow_mut(|cache| {
-        if cache.len() <= power {
+        if power >= cache.len() {
             cache.reserve(power - cache.len() + 1);
             for i in cache.len()..=power {
                 cache.push(calc_log_p(1 << i));

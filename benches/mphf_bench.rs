@@ -1,8 +1,12 @@
 use std::time::Duration;
 
+use ahash::HashSet;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, PlotConfiguration};
-use rand::random;
-use recsplit::mphf::{determine_mvp_bits_per_key,  SrsMphf};
+use rand::{
+    distributions::{Alphanumeric, DistString},
+    random,
+};
+use recsplit::mphf::{determine_mvp_bits_per_key, SrsMphf};
 
 fn create_mphf_single(c: &mut Criterion) {
     let mut group = c.benchmark_group("create single srs mphf (size = 1024)");
@@ -115,23 +119,105 @@ fn pareto(c: &mut Criterion) {
     group
         .plot_config(PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic));
 
-    let size = 1 << 15;
-    let data = &(0..size).map(|i| i.to_string()).collect::<Vec<_>>();
+    const SIZE: usize = 1 << 15;
 
-    group.throughput(criterion::Throughput::Elements(size as u64));
+    let gen_input = || loop {
+        let data = (0..SIZE)
+            .map(|_| Alphanumeric.sample_string(&mut rand::thread_rng(), 16))
+            .collect::<Vec<_>>();
+        if data.iter().collect::<HashSet<_>>().len() == SIZE {
+            return data;
+        }
+    };
+
+    group.throughput(criterion::Throughput::Elements(SIZE as u64));
     for overhead in [1., 0.5, 0.2, 0.1, 0.01, 0.001] {
-        group.bench_with_input(
-            BenchmarkId::new(size.to_string(), determine_mvp_bits_per_key(size, overhead)),
-            data,
-            |b, input| {
-                b.iter(|| {
-                    SrsMphf::new_random(input, overhead);
-                })
+        group.bench_function(
+            BenchmarkId::new(SIZE.to_string(), determine_mvp_bits_per_key(SIZE, overhead)),
+            |b| {
+                b.iter_batched(
+                    gen_input,
+                    |input| {
+                        SrsMphf::new_random(&input, overhead);
+                    },
+                    criterion::BatchSize::LargeInput,
+                )
             },
         );
     }
 
     group.finish();
+}
+
+fn different_hashers(c: &mut Criterion) {
+    let mut group = c.benchmark_group("different_hashers");
+
+    const SIZE: usize = 1 << 10;
+    let overhead = 0.1;
+    let gen_input = || loop {
+        let data: [[usize; 8]; SIZE] = random();
+        if data.iter().collect::<HashSet<_>>().len() == SIZE {
+            return data;
+        }
+    };
+    let random = random();
+    // group.sample_size(10);
+
+    group.bench_function("std::hash", |b| {
+        b.iter_batched(
+            gen_input,
+            |input| {
+                SrsMphf::with_state(&input, overhead, std::hash::RandomState::default());
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
+    group.bench_function("ahash", |b| {
+        b.iter_batched(
+            gen_input,
+            |input| {
+                SrsMphf::with_state(
+                    &input,
+                    overhead,
+                    ahash::RandomState::with_seeds(random, random, random, random),
+                );
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
+    group.bench_function("wy2hash", |b| {
+        b.iter_batched(
+            gen_input,
+            |input| {
+                SrsMphf::with_state(&input, overhead, wyhash2::WyHash::default());
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
+    group.bench_function("xxhash", |b| {
+        b.iter_batched(
+            gen_input,
+            |input| {
+                SrsMphf::with_state(
+                    &input,
+                    overhead,
+                    xxhash_rust::xxh64::Xxh64Builder::default(),
+                );
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
+
+    // does not terminate, too bad quality?
+    // group.bench_function("fxhash", |b| {
+    //     b.iter_batched(
+    //         gen_input,
+    //         |input| {
+    //             SrsMphf::with_state(&input, overhead, fxhash::FxBuildHasher::default());
+    //         },
+    //         criterion::BatchSize::LargeInput,
+    //     )
+    // });
 }
 
 criterion_group!(
@@ -141,6 +227,7 @@ criterion_group!(
     create_many_sizes,
     create_many_eps,
     hash,
+    different_hashers,
     pareto,
 );
 criterion_main!(benches);

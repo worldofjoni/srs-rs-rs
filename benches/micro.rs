@@ -140,10 +140,54 @@ fn round_floor(c: &mut Criterion) {
     });
 }
 
+fn hash_speed(c: &mut Criterion) {
+    let mut group: criterion::BenchmarkGroup<'_, criterion::measurement::WallTime> =
+        c.benchmark_group("hash speed for usize");
+
+    use std::hash::BuildHasher;
+
+    group.bench_function("std::hash", |b| {
+        b.iter_batched(
+            rand::random,
+            |input: usize| std::hash::RandomState::new().hash_one(input),
+            criterion::BatchSize::SmallInput,
+        )
+    });
+    group.bench_function("ahash", |b| {
+        b.iter_batched(
+            rand::random,
+            |input: usize| ahash::RandomState::new().hash_one(input),
+            criterion::BatchSize::SmallInput,
+        )
+    });
+    group.bench_function("wy2hash", |b| {
+        b.iter_batched(
+            rand::random,
+            |input: usize| wyhash2::WyHash::default().hash_one(input),
+            criterion::BatchSize::SmallInput,
+        )
+    });
+    group.bench_function("xxhash", |b| {
+        b.iter_batched(
+            rand::random,
+            |input: usize| xxhash_rust::xxh64::Xxh64Builder::default().hash_one(input),
+            criterion::BatchSize::SmallInput,
+        )
+    });
+    group.bench_function("fxhash", |b| {
+        b.iter_batched(
+            rand::random,
+            |input: usize| fxhash::FxBuildHasher::default().hash_one(input),
+            criterion::BatchSize::SmallInput,
+        )
+    });
+}
+
 criterion_group!(
     benches,
     check_hash_function,
     find_hash_function,
-    round_floor
+    round_floor,
+    hash_speed
 );
 criterion_main!(benches);
