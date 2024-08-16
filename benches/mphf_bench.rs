@@ -17,12 +17,14 @@ fn create_mphf_single(c: &mut Criterion) {
     group.warm_up_time(Duration::from_secs(10));
 
     for i in 0..2 {
-        let data = &(0..SIZE).collect::<Vec<_>>();
-
-        group.bench_with_input(BenchmarkId::from_parameter(i), &data, |b, input| {
-            b.iter(|| {
-                SrsMphf::new_random(input, OVERHEAD);
-            })
+        group.bench_function(BenchmarkId::from_parameter(i), |b| {
+            b.iter_batched(
+                || gen_input(SIZE),
+                |input| {
+                    SrsMphf::new_random(input.as_slice(), OVERHEAD);
+                },
+                criterion::BatchSize::LargeInput,
+            )
         });
 
         group.warm_up_time(Duration::from_secs(1));
@@ -40,12 +42,14 @@ fn create_mphf_large(c: &mut Criterion) {
     group.warm_up_time(Duration::from_secs(10));
     group.sample_size(100);
 
-    let data = &(0..SIZE).collect::<Vec<_>>();
-
-    group.bench_with_input("create", &data, |b, input| {
-        b.iter(|| {
-            SrsMphf::new_random(input, OVERHEAD);
-        })
+    group.bench_function("create", |b| {
+        b.iter_batched(
+            || gen_input(SIZE),
+            |input| {
+                SrsMphf::new_random(input.as_slice(), OVERHEAD);
+            },
+            criterion::BatchSize::LargeInput,
+        )
     });
 
     group.finish();
@@ -57,15 +61,18 @@ fn create_many_sizes(c: &mut Criterion) {
     group.sample_size(10);
 
     const OVERHEAD: f64 = 0.01;
+    const MAX: usize = 16;
 
-    for size in (4..16).map(|i| 1 << i) {
-        let data = &(0..size).collect::<Vec<_>>();
-
+    for size in (4..MAX).map(|i| 1 << i) {
         group.throughput(criterion::Throughput::Elements(size));
-        group.bench_with_input(BenchmarkId::from_parameter(size), data, |b, input| {
-            b.iter(|| {
-                SrsMphf::new_random(input, OVERHEAD);
-            })
+        group.bench_function(BenchmarkId::from_parameter(size), |b| {
+            b.iter_batched(
+                || gen_input(size as usize),
+                |input| {
+                    SrsMphf::new_random(&input, OVERHEAD);
+                },
+                criterion::BatchSize::LargeInput,
+            )
         });
     }
 
@@ -79,19 +86,18 @@ fn create_many_eps(c: &mut Criterion) {
     group
         .plot_config(PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic));
 
-    let size = 1 << 10;
-    let data = &(0..size).collect::<Vec<_>>();
+    const SIZE: usize = 1 << 10;
 
     for overhead in [2., 1., 0.5, 0.1, 0.01, 0.001, 0.0001] {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(1. / overhead),
-            data,
-            |b, input| {
-                b.iter(|| {
-                    SrsMphf::new_random(input, overhead);
-                })
-            },
-        );
+        group.bench_function(BenchmarkId::from_parameter(1. / overhead), |b| {
+            b.iter_batched(
+                || gen_input(SIZE),
+                |input| {
+                    SrsMphf::new_random(input.as_slice(), overhead);
+                },
+                criterion::BatchSize::LargeInput,
+            )
+        });
     }
 
     group.finish();
@@ -154,30 +160,29 @@ fn different_hashers(c: &mut Criterion) {
 
     const SIZE: usize = 1 << 10;
     let overhead = 0.1;
-    let gen_input = || loop {
-        let data: [[usize; 8]; SIZE] = random();
-        if data.iter().collect::<HashSet<_>>().len() == SIZE {
-            return data;
-        }
-    };
+
     let random = random();
     // group.sample_size(10);
 
     group.bench_function("std::hash", |b| {
         b.iter_batched(
-            gen_input,
+            || gen_input(SIZE),
             |input| {
-                SrsMphf::with_state(&input, overhead, std::hash::RandomState::default());
+                SrsMphf::with_state(
+                    input.as_slice(),
+                    overhead,
+                    std::hash::RandomState::default(),
+                );
             },
             criterion::BatchSize::LargeInput,
         )
     });
     group.bench_function("ahash", |b| {
         b.iter_batched(
-            gen_input,
+            || gen_input(SIZE),
             |input| {
                 SrsMphf::with_state(
-                    &input,
+                    input.as_slice(),
                     overhead,
                     ahash::RandomState::with_seeds(random, random, random, random),
                 );
@@ -187,19 +192,19 @@ fn different_hashers(c: &mut Criterion) {
     });
     group.bench_function("wy2hash", |b| {
         b.iter_batched(
-            gen_input,
+            || gen_input(SIZE),
             |input| {
-                SrsMphf::with_state(&input, overhead, wyhash2::WyHash::default());
+                SrsMphf::with_state(input.as_slice(), overhead, wyhash2::WyHash::default());
             },
             criterion::BatchSize::LargeInput,
         )
     });
     group.bench_function("xxhash", |b| {
         b.iter_batched(
-            gen_input,
+            || gen_input(SIZE),
             |input| {
                 SrsMphf::with_state(
-                    &input,
+                    input.as_slice(),
                     overhead,
                     xxhash_rust::xxh64::Xxh64Builder::default(),
                 );
@@ -218,6 +223,16 @@ fn different_hashers(c: &mut Criterion) {
     //         criterion::BatchSize::LargeInput,
     //     )
     // });
+}
+
+fn gen_input(size: usize) -> Vec<[usize; 8]> {
+    loop {
+        let mut data = vec![[0; 8]; size];
+        data.iter_mut().for_each(|s| *s = random());
+        if data.iter().collect::<HashSet<_>>().len() == size {
+            return data;
+        }
+    }
 }
 
 criterion_group!(

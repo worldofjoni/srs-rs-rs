@@ -6,7 +6,6 @@ use std::{
 };
 
 use bitvec::{field::BitField, order::Msb0, vec::BitVec};
-use rand::random;
 
 use crate::RecHasher;
 
