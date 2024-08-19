@@ -21,7 +21,7 @@ fn create_mphf_single(c: &mut Criterion) {
             b.iter_batched(
                 || gen_input(SIZE),
                 |input| {
-                    SrsMphf::new_random(input.as_slice(), OVERHEAD);
+                    SrsMphf::new(input.as_slice(), OVERHEAD);
                 },
                 criterion::BatchSize::LargeInput,
             )
@@ -46,7 +46,7 @@ fn create_mphf_large(c: &mut Criterion) {
         b.iter_batched(
             || gen_input(SIZE),
             |input| {
-                SrsMphf::new_random(input.as_slice(), OVERHEAD);
+                SrsMphf::new(input.as_slice(), OVERHEAD);
             },
             criterion::BatchSize::LargeInput,
         )
@@ -69,7 +69,7 @@ fn create_many_sizes(c: &mut Criterion) {
             b.iter_batched(
                 || gen_input(size as usize),
                 |input| {
-                    SrsMphf::new_random(&input, OVERHEAD);
+                    SrsMphf::new(&input, OVERHEAD);
                 },
                 criterion::BatchSize::LargeInput,
             )
@@ -93,7 +93,7 @@ fn create_many_eps(c: &mut Criterion) {
             b.iter_batched(
                 || gen_input(SIZE),
                 |input| {
-                    SrsMphf::new_random(input.as_slice(), overhead);
+                    SrsMphf::new(input.as_slice(), overhead);
                 },
                 criterion::BatchSize::LargeInput,
             )
@@ -111,7 +111,7 @@ fn hash(c: &mut Criterion) {
     let size = 1 << 12;
     let overhead = 0.01;
     let data = &(0..size).collect::<Vec<_>>();
-    let mphf = SrsMphf::new_random(data, overhead);
+    let mphf = SrsMphf::new(data, overhead);
 
     group.bench_with_input("hash", &mphf, |b, mphf| {
         b.iter_batched(random, |i| mphf.hash(&i), criterion::BatchSize::SmallInput)
@@ -137,14 +137,14 @@ fn pareto(c: &mut Criterion) {
     };
 
     group.throughput(criterion::Throughput::Elements(SIZE as u64));
-    for overhead in [1., 0.5, 0.2, 0.1, 0.01, 0.001] {
+    for overhead in [0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001] {
         group.bench_function(
             BenchmarkId::new(SIZE.to_string(), determine_mvp_bits_per_key(SIZE, overhead)),
             |b| {
                 b.iter_batched(
                     gen_input,
                     |input| {
-                        SrsMphf::new_random(&input, overhead);
+                        SrsMphf::new(&input, overhead);
                     },
                     criterion::BatchSize::LargeInput,
                 )

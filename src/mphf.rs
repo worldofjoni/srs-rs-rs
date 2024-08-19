@@ -31,7 +31,7 @@ impl<T: Hash, H: BuildHasher + Clone> SrsMphf<T, H> {
 }
 
 impl<T: Hash> SrsMphf<T> {
-    pub fn new_random(data: &[T], overhead: Float) -> Self {
+    pub fn new(data: &[T], overhead: Float) -> Self {
         Self::with_state(data, overhead, DefaultHash::default())
     }
 
@@ -107,6 +107,11 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
     fn new(data: &'a mut [&'a T], overhead: Float, random_state: H) -> Self {
         let size = data.len();
         assert!(size.is_power_of_two());
+        assert!(
+            overhead * (data.len() as Float).sqrt() - get_log_p(data.len()) < 32.,
+            "{} !< 32: overhead too large; for now, as root bits can get that large",
+            overhead * (data.len() as Float).sqrt() - get_log_p(data.len())
+        ); // todo current index is i32,
         Self {
             overhead,
             data,
@@ -183,7 +188,8 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
 
             let layer = task_idx_1.ilog2();
             let chunk = task_idx_1 - (1 << layer);
-            let required_bits = self.overhead - get_log_p(self.data.len() >> layer);
+            let required_bits = self.overhead * ((self.data.len() >> layer) as Float).sqrt()
+                - get_log_p(self.data.len() >> layer);
 
             let required_bits = required_bits - frame.fractional_accounted_bits;
             let task_bit_count = required_bits.ceil() as usize; // log2 k
@@ -303,11 +309,13 @@ fn sigma(j: usize, overhead: Float, size: usize) -> Float {
     let layer = j.ilog2();
     let chunk = j - (1 << layer); // starts with 0
 
-    j as Float * overhead
-        - (0..layer)
-            .map(|i| (1 << i) as Float * get_log_p(size >> i))
-            .sum::<Float>()
-        - (chunk + 1) as Float * get_log_p(size >> layer)
+    (0..layer)
+        .map(|i| {
+            (1 << i) as Float * (overhead * ((size >> i) as Float).sqrt() - get_log_p(size >> i))
+        })
+        .sum::<Float>()
+        + (chunk + 1) as Float
+            * (overhead * ((size >> layer) as Float).sqrt() - get_log_p(size >> layer))
 }
 
 #[cfg(test)]
@@ -379,12 +387,12 @@ mod test {
         let size = 1 << 10;
         let overhead = 0.1;
         assert_eq!(
-            SrsMphf::new_random(&(0..size).collect::<Vec<_>>(), overhead).bit_size(),
+            SrsMphf::new(&(0..size).collect::<Vec<_>>(), overhead).bit_size(),
             determine_mvp_space_usage(size, overhead)
         );
         assert_approx_eq!(
             Float,
-            SrsMphf::new_random(&(0..size).collect::<Vec<_>>(), overhead).bit_per_key(),
+            SrsMphf::new(&(0..size).collect::<Vec<_>>(), overhead).bit_per_key(),
             determine_mvp_bits_per_key(size, overhead)
         );
     }
@@ -395,7 +403,7 @@ mod test {
         let overhead = 0.1;
         let data = (0..size).collect::<Vec<_>>();
 
-        let mphf = SrsMphf::new_random(&data, overhead);
+        let mphf = SrsMphf::new(&data, overhead);
         println!(
             "done building! uses {} bits, {} per key",
             mphf.bit_size(),
@@ -412,7 +420,7 @@ mod test {
         let overhead = 0.01;
         let data = (0..size).collect::<Vec<_>>();
 
-        let mphf = SrsMphf::new_random(&data, overhead);
+        let mphf = SrsMphf::new(&data, overhead);
         println!(
             "done building! uses {} bits, {} per key",
             mphf.bit_size(),
@@ -425,11 +433,11 @@ mod test {
 
     #[test]
     fn test_create_huge_mphf() {
-        let size = 1 << 16;
+        let size = 1 << 20;
         let overhead = 0.001; // attention: this is _smaller_ than for the other tests!
         let data = (0..size).collect::<Vec<_>>();
 
-        let mphf = SrsMphf::new_random(&data, overhead);
+        let mphf = SrsMphf::new(&data, overhead);
         println!(
             "done building! uses {} bits, {} per key",
             mphf.bit_size(),
@@ -446,7 +454,7 @@ mod test {
         let overhead = 0.5; // attention: this is _larger_ than for the other tests!
         let data = (0..size).collect::<Vec<_>>();
 
-        let mphf = SrsMphf::new_random(&data, overhead);
+        let mphf = SrsMphf::new(&data, overhead);
         println!(
             "done building! uses {} bits, {} per key",
             mphf.bit_size(),
@@ -464,6 +472,6 @@ mod test {
         let overhead = 0.01;
         let data = (0..size).collect::<Vec<_>>();
 
-        SrsMphf::new_random(&data, overhead);
+        SrsMphf::new(&data, overhead);
     }
 }
