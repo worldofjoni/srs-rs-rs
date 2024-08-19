@@ -61,7 +61,7 @@ fn create_many_sizes(c: &mut Criterion) {
     group.sample_size(10);
 
     const OVERHEAD: f64 = 0.01;
-    const MAX: usize = 16;
+    const MAX: usize = 20;
 
     for size in (4..MAX).map(|i| 1 << i) {
         group.throughput(criterion::Throughput::Elements(size));
