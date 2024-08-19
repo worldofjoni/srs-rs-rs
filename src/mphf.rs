@@ -58,11 +58,11 @@ impl<T: Hash> SrsMphf<T> {
     }
 
     pub fn bit_size(&self) -> usize {
-        self.information.len()
+        self.information.len() - self.information.leading_zeros()
     }
 
     pub fn bit_per_key(&self) -> f64 {
-        self.information.len() as f64 / self.size as f64
+        self.bit_size() as f64 / self.size as f64
     }
 }
 
@@ -96,22 +96,22 @@ struct TaskState {
     fractional_accounted_bits: Float,
     started: Option<Started>,
 }
+
+type Index = u64;
 /// Information only available after started
 #[derive(Copy, Clone)]
 struct Started {
     task_bit_count: NonZeroU32,
-    current_index: u32,
+    current_index: Index,
 }
 
 impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
     fn new(data: &'a mut [&'a T], overhead: Float, random_state: H) -> Self {
-        let size = data.len();
+        let size: usize = data.len();
         assert!(size.is_power_of_two());
-        assert!(
-            overhead * (data.len() as Float).sqrt() - get_log_p(data.len()) < 32.,
-            "{} !< 32: overhead too large; for now, as root bits can get that large",
-            overhead * (data.len() as Float).sqrt() - get_log_p(data.len())
-        ); // todo current index is i32,
+        let max_bit_task = targeted_bits_on_layer(0, overhead, size);
+        assert!(max_bit_task <= Index::BITS as f64, "{max_bit_task}<={} required for impl", Index::BITS);
+
         Self {
             overhead,
             data,
@@ -188,8 +188,7 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
 
             let layer = task_idx_1.ilog2();
             let chunk = task_idx_1 - (1 << layer);
-            let required_bits = self.overhead * ((self.data.len() >> layer) as Float).sqrt()
-                - get_log_p(self.data.len() >> layer);
+            let required_bits = targeted_bits_on_layer(layer, self.overhead, self.data.len());
 
             let required_bits = required_bits - frame.fractional_accounted_bits;
             let task_bit_count = required_bits.ceil() as usize; // log2 k
@@ -310,20 +309,22 @@ fn sigma(j: usize, overhead: Float, size: usize) -> Float {
     let chunk = j - (1 << layer); // starts with 0
 
     (0..layer)
-        .map(|i| {
-            (1 << i) as Float * (overhead * ((size >> i) as Float).sqrt() - get_log_p(size >> i))
-        })
+        .map(|i| (1 << i) as Float * targeted_bits_on_layer(i, overhead, size))
         .sum::<Float>()
-        + (chunk + 1) as Float
-            * (overhead * ((size >> layer) as Float).sqrt() - get_log_p(size >> layer))
+        + (chunk + 1) as Float * targeted_bits_on_layer(layer, overhead, size)
+}
+
+fn targeted_bits_on_layer(layer: u32, overhead: Float, size: usize) -> Float {
+    overhead * ((size >> layer) as Float).sqrt() - get_log_p(size >> layer)
 }
 
 #[cfg(test)]
 mod test {
 
-    use std::collections::HashSet;
+    use std::{collections::HashSet, hint::black_box, time};
 
     use float_cmp::{assert_approx_eq, F64Margin};
+    use rand::distributions::{Alphanumeric, DistString};
 
     use crate::mphf::{
         calc_log_p, determine_mvp_bits_per_key, determine_mvp_space_usage, sigma, Float,
@@ -416,15 +417,26 @@ mod test {
 
     #[test]
     fn test_create_large_mphf() {
-        let size = 1 << 12;
-        let overhead = 0.01;
+        let size = 1 << 15;
+        let overhead = 0.0001;
         let data = (0..size).collect::<Vec<_>>();
 
+        let start = time::Instant::now();
         let mphf = SrsMphf::new(&data, overhead);
+        let took = start.elapsed();
+
         println!(
-            "done building! uses {} bits, {} per key",
+            "done building in {:?} for size {size} uses {} bits, {} per key",
+            took,
             mphf.bit_size(),
             mphf.bit_per_key()
+        );
+        println!(
+            "data: {:?}",
+            mphf.information
+                .iter()
+                .map(|b| usize::from(*b).to_string())
+                .collect::<String>()
         );
 
         let hashes = (0..size).map(|v| mphf.hash(&v)).collect::<HashSet<_>>();
@@ -437,9 +449,12 @@ mod test {
         let overhead = 0.001; // attention: this is _smaller_ than for the other tests!
         let data = (0..size).collect::<Vec<_>>();
 
+        let start = time::Instant::now();
         let mphf = SrsMphf::new(&data, overhead);
+        let took = start.elapsed();
         println!(
-            "done building! uses {} bits, {} per key",
+            "done building in {:?}! uses {} bits, {} per key",
+            took,
             mphf.bit_size(),
             mphf.bit_per_key()
         );
@@ -463,6 +478,32 @@ mod test {
 
         let hashes = (0..size).map(|v| mphf.hash(&v)).collect::<HashSet<_>>();
         assert_eq!(hashes.len(), size);
+    }
+
+    #[test]
+    fn pareto() {
+        const SIZE: usize = 1 << 20;
+        println!("pareto size {SIZE}");
+
+        let gen_input = || loop {
+            let data = (0..SIZE)
+                .map(|_| Alphanumeric.sample_string(&mut rand::thread_rng(), 16))
+                .collect::<Vec<_>>();
+            if data.iter().collect::<HashSet<_>>().len() == SIZE {
+                return data;
+            }
+        };
+        let input = black_box(gen_input());
+
+        for overhead in [0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001] {
+            let start = time::Instant::now();
+            let mphf = black_box(SrsMphf::new(&input, overhead));
+            let took = start.elapsed();
+            println!(
+                "param {overhead}, bpk {}, took {took:?}",
+                mphf.bit_per_key()
+            );
+        }
     }
 
     #[test]

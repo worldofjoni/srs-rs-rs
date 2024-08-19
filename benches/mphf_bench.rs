@@ -36,7 +36,7 @@ fn create_mphf_single(c: &mut Criterion) {
 fn create_mphf_large(c: &mut Criterion) {
     let mut group = c.benchmark_group("create single large srs mphf (size = 65536)");
 
-    const SIZE: usize = 1 << 14;
+    const SIZE: usize = 1 << 16;
     const OVERHEAD: f64 = 0.01;
 
     group.warm_up_time(Duration::from_secs(10));
