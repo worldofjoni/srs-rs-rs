@@ -37,10 +37,11 @@ impl<T: Hash> SrsMphf<T> {
 
     pub fn hash(&self, value: &T) -> usize {
         let mut result = 0;
+        let mut cum = CumulativeSigma::new(self.size, self.overhead);
         for i in 0..self.size.ilog2() {
             let j_1 = (1 << i) as usize + result;
 
-            let start = sigma(j_1, self.overhead, self.size).ceil() as Word;
+            let start = cum.calc_to(j_1).ceil() as Word;
             // + Word::BITS for root - Word::BITS for start
 
             let seed = self.information[start..][..Word::BITS as usize].load_be();
@@ -110,7 +111,11 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
         let size: usize = data.len();
         assert!(size.is_power_of_two());
         let max_bit_task = targeted_bits_on_layer(0, overhead, size);
-        assert!(max_bit_task <= Index::BITS as f64, "{max_bit_task}<={} required for impl", Index::BITS);
+        assert!(
+            max_bit_task <= Index::BITS as f64,
+            "{max_bit_task}<={} required for impl",
+            Index::BITS
+        );
 
         Self {
             overhead,
@@ -274,7 +279,7 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
 /// n: size where to search binary splitting
 fn calc_log_p(n: usize) -> Float {
     assert!(n.is_power_of_two(), "n={n}");
-    // todo stirling good enough?
+    // todo stirling good enough? -> improve
     (1..=n / 2)
         .map(|i| (n as Float / (8. * i as Float)) + 0.25)
         .map(Float::log2)
@@ -314,6 +319,62 @@ fn sigma(j: usize, overhead: Float, size: usize) -> Float {
         + (chunk + 1) as Float * targeted_bits_on_layer(layer, overhead, size)
 }
 
+#[derive(Default)]
+struct CumulativeSigma {
+    size: usize,
+    overhead: Float,
+    index: usize,
+    value: Float,
+}
+
+impl CumulativeSigma {
+    fn new(size: usize, overhead: Float) -> Self {
+        Self {
+            size,
+            overhead,
+            index: 0,
+            value: 0.,
+        }
+    }
+    fn calc_to(&mut self, idx: usize) -> Float {
+        assert!(idx >= self.index);
+        assert_eq!(
+            idx.checked_ilog2().and_then(|v| v.checked_sub(1)),
+            self.index.checked_ilog2(),
+            "idx needs to be on the next layer, or layer zero."
+        );
+
+        if idx == self.index {
+            return self.value;
+        }
+
+        let start_layer = if let Some(old_layer) = self.index.checked_ilog2() {
+            let old_chunk = self.index - (1 << old_layer); // starts with 0
+
+            self.value += ((1 << old_layer) - old_chunk - 1) as Float
+                * targeted_bits_on_layer(old_layer, self.overhead, self.size);
+            old_layer
+        } else {
+            0
+        };
+
+        let new_layer = idx.ilog2();
+        let new_chunk = idx - (1 << new_layer); // starts with 0
+
+        // todo remove, assure always on the next layer?
+        self.value += (start_layer + 1..new_layer)
+            .map(|i| (1 << i) as Float * targeted_bits_on_layer(i, self.overhead, self.size))
+            .sum::<Float>();
+
+        self.value +=
+            (new_chunk + 1) as Float * targeted_bits_on_layer(new_layer, self.overhead, self.size);
+
+        self.index = idx;
+
+        self.value
+    }
+}
+
 fn targeted_bits_on_layer(layer: u32, overhead: Float, size: usize) -> Float {
     overhead * ((size >> layer) as Float).sqrt() - get_log_p(size >> layer)
 }
@@ -330,7 +391,7 @@ mod test {
         calc_log_p, determine_mvp_bits_per_key, determine_mvp_space_usage, sigma, Float,
     };
 
-    use super::{get_log_p, SrsMphf};
+    use super::{get_log_p, CumulativeSigma, SrsMphf};
 
     #[test]
     fn test_calc_log_p() {
@@ -384,6 +445,18 @@ mod test {
     }
 
     #[test]
+    fn test_sigma_cumulative() {
+        let size = 1 << 10;
+        let overhead = 0.001;
+        let mut cum = CumulativeSigma::new(size, overhead);
+
+        for j in [0, 1, 2, 7, 8, 18] {
+            println!("{j}");
+            assert_approx_eq!(Float, sigma(j, overhead, size), cum.calc_to(j));
+        }
+    }
+
+    #[test]
     fn test_bit_precalcs() {
         let size = 1 << 10;
         let overhead = 0.1;
@@ -418,7 +491,7 @@ mod test {
     #[test]
     fn test_create_large_mphf() {
         let size = 1 << 15;
-        let overhead = 0.0001;
+        let overhead = 0.001;
         let data = (0..size).collect::<Vec<_>>();
 
         let start = time::Instant::now();
