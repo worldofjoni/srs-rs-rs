@@ -105,11 +105,11 @@ fn create_many_eps(c: &mut Criterion) {
 
 fn hash(c: &mut Criterion) {
     let mut group = c.benchmark_group("hash srs mphf");
-    group.measurement_time(Duration::from_secs(10));
+    group.measurement_time(Duration::from_secs(3));
     group.sample_size(10);
 
     let overhead = 0.01;
-    for size in 4..20 {
+    for size in 4..=20 {
         let size = 1usize << size;
         let data = &(0..size).collect::<Vec<_>>();
         let mphf = SrsMphf::new(data, overhead);

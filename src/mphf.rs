@@ -337,40 +337,26 @@ impl CumulativeSigma {
         }
     }
     fn calc_to(&mut self, idx: usize) -> Float {
-        assert!(idx >= self.index);
-        assert_eq!(
-            idx.checked_ilog2().and_then(|v| v.checked_sub(1)),
+        debug_assert_eq!(
+            idx.ilog2().checked_sub(1),
             self.index.checked_ilog2(),
-            "idx needs to be on the next layer, or layer zero."
+            "idx needs to be on the next layer."
         );
 
-        if idx == self.index {
-            return self.value;
-        }
-
-        let start_layer = if let Some(old_layer) = self.index.checked_ilog2() {
+        if let Some(old_layer) = self.index.checked_ilog2() {
             let old_chunk = self.index - (1 << old_layer); // starts with 0
 
             self.value += ((1 << old_layer) - old_chunk - 1) as Float
                 * targeted_bits_on_layer(old_layer, self.overhead, self.size);
-            old_layer
-        } else {
-            0
-        };
+        }
 
         let new_layer = idx.ilog2();
         let new_chunk = idx - (1 << new_layer); // starts with 0
-
-        // todo remove, assure always on the next layer?
-        self.value += (start_layer + 1..new_layer)
-            .map(|i| (1 << i) as Float * targeted_bits_on_layer(i, self.overhead, self.size))
-            .sum::<Float>();
 
         self.value +=
             (new_chunk + 1) as Float * targeted_bits_on_layer(new_layer, self.overhead, self.size);
 
         self.index = idx;
-
         self.value
     }
 }
@@ -450,7 +436,7 @@ mod test {
         let overhead = 0.001;
         let mut cum = CumulativeSigma::new(size, overhead);
 
-        for j in [0, 1, 2, 7, 8, 18] {
+        for j in [1, 2, 7, 8, 18] {
             println!("{j}");
             assert_approx_eq!(Float, sigma(j, overhead, size), cum.calc_to(j));
         }
