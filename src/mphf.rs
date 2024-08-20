@@ -39,10 +39,12 @@ impl<T: Hash> SrsMphf<T> {
         let mut result = 0;
         let mut cum = 0.;
 
+        let log_size = self.size.ilog2();
+
         for layer in 0..self.size.ilog2() {
             let chunk = result;
 
-            let layer_bit_target = targeted_bits_on_layer(layer, self.overhead, self.size);
+            let layer_bit_target = targeted_bits_on_layer(layer, self.overhead, log_size);
 
             let so_far = cum + (chunk + 1) as Float * layer_bit_target;
 
@@ -114,7 +116,7 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
     fn new(data: &'a mut [&'a T], overhead: Float, random_state: H) -> Self {
         let size: usize = data.len();
         assert!(size.is_power_of_two());
-        let max_bit_task = targeted_bits_on_layer(0, overhead, size);
+        let max_bit_task = targeted_bits_on_layer(0, overhead, size.ilog2());
         assert!(
             max_bit_task <= Index::BITS as f64,
             "{max_bit_task}<={} required for impl",
@@ -197,7 +199,7 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
 
             let layer = task_idx_1.ilog2();
             let chunk = task_idx_1 - (1 << layer);
-            let required_bits = targeted_bits_on_layer(layer, self.overhead, self.data.len());
+            let required_bits = targeted_bits_on_layer(layer, self.overhead, self.data.len().ilog2());
 
             let required_bits = required_bits - frame.fractional_accounted_bits;
             let task_bit_count = required_bits.ceil() as usize; // log2 k
@@ -281,33 +283,55 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
 }
 
 /// n: size where to search binary splitting
+#[allow(unused)]
 fn calc_log_p(n: usize) -> Float {
     assert!(n.is_power_of_two(), "n={n}");
-    // todo stirling good enough? -> improve
+    // todo stirling good enough?
     (1..=n / 2)
         .map(|i| (n as Float / (8. * i as Float)) + 0.25)
         .map(Float::log2)
         .sum()
 }
 
-fn get_log_p(n: usize) -> Float {
-    assert!(n.is_power_of_two(), "n={n}");
-    let power = n.ilog2() as usize;
+const L_P: [Float; 31] = [
+    0.0,
+    -1.0,
+    -1.415037499278844,
+    -1.8707169830550336,
+    -2.348275566891936,
+    -2.8370172874049393,
+    -3.331383362996563,
+    -3.828565799826217,
+    -4.327156943029114,
+    -4.826452505226261,
+    -5.326100285149282,
+    -5.825924174963724,
+    -6.325836119852171,
+    -6.825792092292873,
+    -7.325770078523176,
+    -7.825759071640692,
+    -8.325753568168604,
+    -8.825750816775335,
+    -9.3257494420903,
+    -9.82574874929842,
+    -10.32574841436987,
+    -10.825748257990249,
+    -11.32574818174186,
+    -11.825747955545237,
+    -12.325747725324078,
+    -12.825748940275274,
+    -13.325752320771377,
+    -13.825735618868379,
+    -14.325762854934181,
+    -14.825743217079987,
+    -15.325718561245553,
+];
 
-    thread_local! {
-        static LOG_P_LAYER: RefCell<Vec<Float>> = const {RefCell::new(Vec::new())};
-    }
-
-    LOG_P_LAYER.with_borrow_mut(|cache| {
-        if power >= cache.len() {
-            cache.reserve(power - cache.len() + 1);
-            for i in cache.len()..=power {
-                cache.push(calc_log_p(1 << i));
-            }
-        }
-        cache[power]
-    })
+#[inline(always)]
+fn get_log_p_power(power: u32) -> Float {
+    L_P[power as usize]
 }
+
 
 fn sigma(j: usize, overhead: Float, size: usize) -> Float {
     if j == 0 {
@@ -318,14 +342,14 @@ fn sigma(j: usize, overhead: Float, size: usize) -> Float {
     let chunk = j - (1 << layer); // starts with 0
 
     (0..layer)
-        .map(|i| (1 << i) as Float * targeted_bits_on_layer(i, overhead, size))
+        .map(|i| (1 << i) as Float * targeted_bits_on_layer(i, overhead, size.ilog2()))
         .sum::<Float>()
-        + (chunk + 1) as Float * targeted_bits_on_layer(layer, overhead, size)
+        + (chunk + 1) as Float * targeted_bits_on_layer(layer, overhead, size.ilog2())
 }
 
-
-fn targeted_bits_on_layer(layer: u32, overhead: Float, size: usize) -> Float {
-    overhead * ((size >> layer) as Float).sqrt() - get_log_p(size >> layer)
+#[inline(always)]
+fn targeted_bits_on_layer(layer: u32, overhead: Float, log_size: u32) -> Float {
+    overhead * ((1 << (log_size - layer)) as Float).sqrt() - get_log_p_power(log_size - layer)
 }
 
 #[cfg(test)]
@@ -337,10 +361,10 @@ mod test {
     use rand::distributions::{Alphanumeric, DistString};
 
     use crate::mphf::{
-        calc_log_p, determine_mvp_bits_per_key, determine_mvp_space_usage, sigma, Float,
+        calc_log_p, determine_mvp_bits_per_key, determine_mvp_space_usage, get_log_p_power, sigma, Float
     };
 
-    use super::{get_log_p, SrsMphf};
+    use super::SrsMphf;
 
     #[test]
     fn test_calc_log_p() {
@@ -354,8 +378,12 @@ mod test {
     #[test]
     fn test_get_log_p() {
         for i in [0, 2, 5, 4, 7, 9] {
-            get_log_p(1 << i);
+            get_log_p_power(i);
         }
+        let size = 40;
+        let vals = (0..=size).map(|i| calc_log_p(1 << i)).collect::<Vec<_>>();
+        let vals2 = (0..=size).map(get_log_p_power).collect::<Vec<_>>();
+        assert_eq!(vals, vals2);
     }
 
     #[test]
@@ -393,7 +421,6 @@ mod test {
         }
     }
 
-
     #[test]
     fn test_bit_precalcs() {
         let size = 1 << 10;
@@ -430,7 +457,7 @@ mod test {
     fn test_create_large_mphf() {
         let size = 1 << 15;
         let overhead = 0.001;
-        let data = (0..size).collect::<Vec<_>>();
+        let data: Vec<usize> = (0..size).collect::<Vec<_>>();
 
         let start = time::Instant::now();
         let mphf = SrsMphf::new(&data, overhead);
@@ -525,5 +552,21 @@ mod test {
         let data = (0..size).collect::<Vec<_>>();
 
         SrsMphf::new(&data, overhead);
+    }
+
+    #[test]
+    #[ignore]
+    fn create_mphf_hash_flame() {
+        let size = 1 << 16;
+        let overhead = 0.01;
+        let data = (0..size).collect::<Vec<_>>();
+
+        let mphf = SrsMphf::new(&data, overhead);
+
+        for _ in 0..100 {
+            for i in 0..size {
+                mphf.hash(&i);
+            }
+        }
     }
 }
