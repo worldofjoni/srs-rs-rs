@@ -3,3 +3,4 @@ flamegraph.svg
 .vscode
 out
 asm
+srs_mphf.*

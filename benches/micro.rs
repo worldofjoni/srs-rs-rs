@@ -2,7 +2,7 @@
 
 use ahash::HashSet;
 use criterion::{criterion_group, criterion_main, Criterion};
-use recsplit::RecHasher;
+use srs::RecHasher;
 
 fn check_hash_function(c: &mut Criterion) {
     let mut group: criterion::BenchmarkGroup<'_, criterion::measurement::WallTime> =

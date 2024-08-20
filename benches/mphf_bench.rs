@@ -6,7 +6,7 @@ use rand::{
     distributions::{Alphanumeric, DistString},
     random,
 };
-use recsplit::mphf::{determine_mvp_bits_per_key, SrsMphf};
+use srs::mphf::{determine_mvp_bits_per_key, SrsMphf};
 
 fn create_mphf_single(c: &mut Criterion) {
     let mut group = c.benchmark_group("create single srs mphf (size = 1024)");

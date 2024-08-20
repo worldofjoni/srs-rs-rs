@@ -1,28 +1,26 @@
 [package]
-name = "recsplit"
+name = "srs"
 authors = ["Jonatan Ziegler"]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "RecSplit minimal perfect hash function"
+description = "minimal perfect hash function using near minimal space"
 repository = "https://github.com/worldofjoni/RecSplit"
-keywords = ["hashing", "mphf", "perfect-hash", "perfect"]
+keywords = ["hashing", "mphf", "perfect-hash", "perfect", "brute force", "random seach"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ahash = "0.8.11"
 bitvec = "1.0.1"
 cxx = "1.0.126"
 env_logger = "0.11.3"
-fxhash = "0.2.1"
 indicatif = { version = "0.17.8", optional = true }
 log = "0.4.21"
 rand = { version = "0.8.5", features = ["min_const_gen"] }
 rayon = "1.10.0"
 static_assertions = "1.1.0"
 wyhash2 = "0.2.1"
-xxhash-rust = { version = "0.8.12", features = ["xxh64"] }
+ahash = "0.8.11"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
@@ -31,9 +29,17 @@ gnuplot = "0.0.43"
 rand = "0.8.5"
 stacker = "0.1.15"
 
+# other hashers
+fxhash = "0.2.1"
+xxhash-rust = { version = "0.8.12", features = ["xxh64"] }
+
+
 [features]
 debug_output = []
 progress = ["dep:indicatif"]
+
+[lib]
+crate-type = ["lib", "staticlib"]
 
 
 [[bench]]

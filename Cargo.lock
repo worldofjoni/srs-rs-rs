@@ -670,28 +670,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "recsplit"
-version = "0.1.0"
-dependencies = [
- "ahash",
- "bitvec",
- "criterion",
- "cxx",
- "env_logger",
- "float-cmp",
- "fxhash",
- "gnuplot",
- "indicatif",
- "log",
- "rand",
- "rayon",
- "stacker",
- "static_assertions",
- "wyhash2",
- "xxhash-rust",
-]
-
-[[package]]
 name = "regex"
 version = "1.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -777,6 +755,28 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "srs"
+version = "0.1.0"
+dependencies = [
+ "ahash",
+ "bitvec",
+ "criterion",
+ "cxx",
+ "env_logger",
+ "float-cmp",
+ "fxhash",
+ "gnuplot",
+ "indicatif",
+ "log",
+ "rand",
+ "rayon",
+ "stacker",
+ "static_assertions",
+ "wyhash2",
+ "xxhash-rust",
 ]
 
 [[package]]

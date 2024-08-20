@@ -18,6 +18,8 @@ pub mod mvp_assembled;
 
 pub mod mphf;
 
+pub mod cpp_bindings;
+
 #[cfg(feature = "debug_output")]
 pub use hasher::BIJECTIONS_CHECKED;
 #[cfg(feature = "debug_output")]
