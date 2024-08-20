@@ -1,5 +1,4 @@
 use std::{
-    cell::RefCell,
     hash::{BuildHasher, Hash},
     marker::PhantomData,
     num::NonZeroU32,
@@ -21,6 +20,7 @@ pub struct SrsMphf<T: Hash, H: BuildHasher + Clone = DefaultHash> {
     size: usize,
     overhead: Float,
     #[cfg(feature = "debug_output")]
+    #[allow(unused)]
     stats: (),
 }
 
@@ -37,19 +37,19 @@ impl<T: Hash> SrsMphf<T> {
 
     pub fn hash(&self, value: &T) -> usize {
         let mut result = 0;
-        let mut cum = 0.;
+        let mut cumulative_bits = 0.;
 
         let log_size = self.size.ilog2();
 
-        for layer in 0..self.size.ilog2() {
+        for layer in 0..log_size {
             let chunk = result;
 
             let layer_bit_target = targeted_bits_on_layer(layer, self.overhead, log_size);
 
-            let so_far = cum + (chunk + 1) as Float * layer_bit_target;
+            let so_far = cumulative_bits + (chunk + 1) as Float * layer_bit_target;
 
             // add entire layer worth for next iteration
-            cum += (1 << layer) as Float * layer_bit_target;
+            cumulative_bits += (1 << layer) as Float * layer_bit_target;
 
             let start = so_far.ceil() as Word;
             // + Word::BITS for root - Word::BITS for start
@@ -74,10 +74,12 @@ impl<T: Hash> SrsMphf<T> {
 }
 
 /// determine how many bits would be used
+/// Includes starting zeros that can be avoided, actual size may be smaller!
 pub fn determine_mvp_space_usage(num_elements: usize, overhead: Float) -> usize {
     sigma(num_elements, overhead, num_elements).ceil() as usize + Word::BITS as usize
 }
 /// determine how many bits per key would be used
+/// Includes starting zeros that can be avoided, actual size may be smaller!
 pub fn determine_mvp_bits_per_key(num_elements: usize, overhead: Float) -> Float {
     (sigma(num_elements, overhead, num_elements).ceil() + Word::BITS as Float)
         / num_elements as Float
@@ -145,16 +147,6 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
         let mut stack = Vec::<TaskState>::with_capacity(self.data.len() - 1);
         for root_seed in 0.. {
             if self.srs_search_iterative(root_seed, &mut stack) {
-                // #[cfg(feature = "debug_output")]
-                // {
-                //     println!(
-                //         "bijections found in total {}/{num_buckets}, for each bucket: {:?}",
-                //         self.stats.num_bijections_found.iter().sum::<usize>(),
-                //         self.stats.num_bijections_found
-                //     );
-                //     println!("bij tested: {}", self.stats.bij_tests);
-                // }
-
                 self.information[..Word::BITS as usize].store_be(root_seed);
 
                 #[cfg(feature = "debug_output")]
@@ -205,9 +197,6 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
             let task_bit_count = required_bits.ceil() as usize; // log2 k
             let new_fractional_accounted_bits = required_bits.ceil() - required_bits;
 
-            // println!("task {task_idx_1}, required {required_bits} bit, task bits {task_bit_count}, resuming after? {:?}",
-            // frame.started.map(|s| s.current_index));
-
             #[cfg(feature = "progress")]
             {
                 if self.saved_progress != layer as u64 {
@@ -243,8 +232,6 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
                             .and_then(NonZeroU32::new)
                             .expect("task bit count in expected range"),
                     });
-
-                    // println!("  found at index {index}");
 
                     if task_idx_1 == num_tasks {
                         self.load_indices_from_stack(stack);
@@ -484,7 +471,7 @@ mod test {
     #[test]
     fn test_create_huge_mphf() {
         let size = 1 << 20;
-        let overhead = 0.001; // attention: this is _smaller_ than for the other tests!
+        let overhead = 0.001;
         let data = (0..size).collect::<Vec<_>>();
 
         let start = time::Instant::now();
