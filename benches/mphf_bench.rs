@@ -108,14 +108,16 @@ fn hash(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(10));
     group.sample_size(10);
 
-    let size = 1 << 12;
     let overhead = 0.01;
-    let data = &(0..size).collect::<Vec<_>>();
-    let mphf = SrsMphf::new(data, overhead);
+    for size in 4..20 {
+        let size = 1usize << size;
+        let data = &(0..size).collect::<Vec<_>>();
+        let mphf = SrsMphf::new(data, overhead);
 
-    group.bench_with_input("hash", &mphf, |b, mphf| {
-        b.iter_batched(random, |i| mphf.hash(&i), criterion::BatchSize::SmallInput)
-    });
+        group.bench_with_input(BenchmarkId::from_parameter(size.ilog2()), &mphf, |b, mphf| {
+            b.iter_batched(random, |i| mphf.hash(&i), criterion::BatchSize::SmallInput)
+        });
+    }
 }
 
 fn pareto(c: &mut Criterion) {
