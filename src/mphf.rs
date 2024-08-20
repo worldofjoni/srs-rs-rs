@@ -9,7 +9,7 @@ use bitvec::{field::BitField, order::Msb0, vec::BitVec};
 use crate::RecHasher;
 
 type Word = usize;
-type Float = f64;
+pub type Float = f64;
 type DefaultHash = wyhash2::WyHash;
 
 pub struct SrsMphf<T: Hash, H: BuildHasher + Clone = DefaultHash> {
@@ -24,14 +24,14 @@ pub struct SrsMphf<T: Hash, H: BuildHasher + Clone = DefaultHash> {
     stats: (),
 }
 
-impl<T: Hash, H: BuildHasher + Clone> SrsMphf<T, H> {
-    pub fn with_state(data: &[T], overhead: Float, state: H) -> Self {
-        MphfBuilder::new(&mut data.iter().collect::<Vec<_>>(), overhead, state).build()
+impl<'a, T: Hash + 'a, H: BuildHasher + Clone> SrsMphf<T, H> {
+    pub fn with_state(data: impl IntoIterator<Item = &'a T>, overhead: Float, state: H) -> Self {
+        MphfBuilder::new(&mut data.into_iter().collect::<Vec<_>>(), overhead, state).build()
     }
 }
 
-impl<T: Hash> SrsMphf<T> {
-    pub fn new(data: &[T], overhead: Float) -> Self {
+impl<'a, T: Hash + 'a> SrsMphf<T> {
+    pub fn new(data: impl IntoIterator<Item = &'a T>, overhead: Float) -> Self {
         Self::with_state(data, overhead, DefaultHash::default())
     }
 
