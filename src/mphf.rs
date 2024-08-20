@@ -323,7 +323,6 @@ fn sigma(j: usize, overhead: Float, size: usize) -> Float {
 struct CumulativeSigma {
     size: usize,
     overhead: Float,
-    index: usize,
     value: Float,
 }
 
@@ -332,32 +331,21 @@ impl CumulativeSigma {
         Self {
             size,
             overhead,
-            index: 0,
             value: 0.,
         }
     }
     fn calc_to(&mut self, idx: usize) -> Float {
-        debug_assert_eq!(
-            idx.ilog2().checked_sub(1),
-            self.index.checked_ilog2(),
-            "idx needs to be on the next layer."
-        );
+        let layer = idx.ilog2();
+        let chunk = idx - (1 << layer); // starts with 0
 
-        if let Some(old_layer) = self.index.checked_ilog2() {
-            let old_chunk = self.index - (1 << old_layer); // starts with 0
+        let layer_bit_target = targeted_bits_on_layer(layer, self.overhead, self.size);
 
-            self.value += ((1 << old_layer) - old_chunk - 1) as Float
-                * targeted_bits_on_layer(old_layer, self.overhead, self.size);
-        }
+        let ret = self.value +
+            (chunk + 1) as Float * layer_bit_target;
 
-        let new_layer = idx.ilog2();
-        let new_chunk = idx - (1 << new_layer); // starts with 0
+        self.value += (1<< layer) as Float * layer_bit_target;
 
-        self.value +=
-            (new_chunk + 1) as Float * targeted_bits_on_layer(new_layer, self.overhead, self.size);
-
-        self.index = idx;
-        self.value
+        ret
     }
 }
 
