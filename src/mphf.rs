@@ -37,23 +37,27 @@ impl<T: Hash> SrsMphf<T> {
 
     pub fn hash(&self, value: &T) -> usize {
         let mut result = 0;
-        let mut cum = CumulativeSigma::new(self.size, self.overhead);
-        for i in 0..self.size.ilog2() {
-            let j_1 = (1 << i) as usize + result;
+        let mut cum = 0.;
 
-            let start = cum.calc_to(j_1).ceil() as Word;
+        for layer in 0..self.size.ilog2() {
+            let chunk = result;
+
+            let layer_bit_target = targeted_bits_on_layer(layer, self.overhead, self.size);
+
+            let so_far = cum + (chunk + 1) as Float * layer_bit_target;
+
+            // add entire layer worth for next iteration
+            cum += (1 << layer) as Float * layer_bit_target;
+
+            let start = so_far.ceil() as Word;
             // + Word::BITS for root - Word::BITS for start
 
             let seed = self.information[start..][..Word::BITS as usize].load_be();
-            // println!("level {i}, result {result:b}, accessing seed at {start}");
-            // println!("  seed {seed:b}");
 
             result <<= 1;
             let hash = self.hasher.hash_binary(seed, value);
-            // println!("  gotten hash {hash}");
             result |= hash;
         }
-        // println!("done {result}");
 
         result
     }
@@ -319,35 +323,6 @@ fn sigma(j: usize, overhead: Float, size: usize) -> Float {
         + (chunk + 1) as Float * targeted_bits_on_layer(layer, overhead, size)
 }
 
-#[derive(Default)]
-struct CumulativeSigma {
-    size: usize,
-    overhead: Float,
-    value: Float,
-}
-
-impl CumulativeSigma {
-    fn new(size: usize, overhead: Float) -> Self {
-        Self {
-            size,
-            overhead,
-            value: 0.,
-        }
-    }
-    fn calc_to(&mut self, idx: usize) -> Float {
-        let layer = idx.ilog2();
-        let chunk = idx - (1 << layer); // starts with 0
-
-        let layer_bit_target = targeted_bits_on_layer(layer, self.overhead, self.size);
-
-        let ret = self.value +
-            (chunk + 1) as Float * layer_bit_target;
-
-        self.value += (1<< layer) as Float * layer_bit_target;
-
-        ret
-    }
-}
 
 fn targeted_bits_on_layer(layer: u32, overhead: Float, size: usize) -> Float {
     overhead * ((size >> layer) as Float).sqrt() - get_log_p(size >> layer)
@@ -365,7 +340,7 @@ mod test {
         calc_log_p, determine_mvp_bits_per_key, determine_mvp_space_usage, sigma, Float,
     };
 
-    use super::{get_log_p, CumulativeSigma, SrsMphf};
+    use super::{get_log_p, SrsMphf};
 
     #[test]
     fn test_calc_log_p() {
@@ -418,17 +393,6 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_sigma_cumulative() {
-        let size = 1 << 10;
-        let overhead = 0.001;
-        let mut cum = CumulativeSigma::new(size, overhead);
-
-        for j in [1, 2, 7, 8, 18] {
-            println!("{j}");
-            assert_approx_eq!(Float, sigma(j, overhead, size), cum.calc_to(j));
-        }
-    }
 
     #[test]
     fn test_bit_precalcs() {
