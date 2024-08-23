@@ -31,12 +31,12 @@ Afterward, SrsMphf can be used the following:
 
 int main()
 {
-    std::vector<std::string> vec{std::string("hello"), std::string("world")};
+    std::vector<std::string> vec{"hello", "world"};
 
-    auto srs = srs::constructSrsMphf(vec, 0.1);
+    auto srs = srs::constructSrsMphf(vec, 0.001);
 
     std::cout << "size: " << srs->getBits() << ", bit per key: " << srs->getBitsPerKey() << ", hashes: " 
-        << srs->hash(std::string("hello")) << " " << srs->hash(std::string("world")) << std::endl;
+        << srs->hash("hello") << " " << srs->hash("world") << std::endl;
 }
 
 ```
