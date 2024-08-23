@@ -18,6 +18,7 @@ pub mod mvp_assembled;
 
 pub mod mphf;
 
+#[cfg(feature = "cpp_binds")]
 pub mod cpp_bindings;
 
 #[cfg(feature = "debug_output")]
