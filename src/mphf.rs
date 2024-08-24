@@ -1,4 +1,5 @@
 use std::{
+    f64::consts::PI,
     hash::{BuildHasher, Hash},
     marker::PhantomData,
     num::NonZeroU32,
@@ -39,29 +40,56 @@ impl<'a, T: Hash + 'a> SrsMphf<T> {
         let mut result = 0;
         let mut cumulative_bits = 0.;
 
-        let log_size = self.size.ilog2();
+        let log_size = self.size.next_power_of_two().ilog2();
 
-        for layer in 0..log_size {
+        for layer in (1..=log_size).rev() {
             let chunk = result;
 
-            let layer_bit_target = targeted_bits_on_layer(layer, self.overhead, log_size);
+            let ordinary_task_size = 1 << layer;
+            let ordinary_bits_layer = targeted_bits_for_size(ordinary_task_size, self.overhead);
 
-            let so_far = cumulative_bits + (chunk + 1) as Float * layer_bit_target;
+            let extra_task_size = self.size % ordinary_task_size;
+            let has_special_task = extra_task_size > (1 << (layer - 1));
+
+            let extra_task_bits = if has_special_task {
+                targeted_bits_for_size(extra_task_size, self.overhead)
+            } else {
+                0.
+            };
+            let whole_layer_bits =
+                (self.size >> layer) as Float * ordinary_bits_layer + extra_task_bits;
+
+            let hash = if chunk < self.size >> layer {
+                // is ordinary task
+                let so_far = cumulative_bits + (chunk + 1) as Float * ordinary_bits_layer;
+                let seed = self.get_seed(so_far);
+
+                self.hasher.hash_binary(seed, value)
+            } else if has_special_task {
+                // is special task
+                let seed = self.get_seed(cumulative_bits + whole_layer_bits);
+
+                self.hasher.hash_ratio(seed, value, extra_task_size)
+            } else {
+                // no task in this layer
+                0
+            };
 
             // add entire layer worth for next iteration
-            cumulative_bits += (1 << layer) as Float * layer_bit_target;
-
-            let start = so_far.ceil() as Word;
-            // + Word::BITS for root - Word::BITS for start
-
-            let seed = self.information[start..][..Word::BITS as usize].load_be();
+            cumulative_bits += whole_layer_bits;
 
             result <<= 1;
-            let hash = self.hasher.hash_binary(seed, value);
             result |= hash;
         }
 
         result
+    }
+
+    fn get_seed(&self, bit_so_far: Float) -> usize {
+        let start = bit_so_far.ceil() as Word;
+        // + Word::BITS for root - Word::BITS for start
+
+        self.information[start..][..Word::BITS as usize].load_be()
     }
 
     pub fn bit_size(&self) -> usize {
@@ -76,13 +104,12 @@ impl<'a, T: Hash + 'a> SrsMphf<T> {
 /// determine how many bits would be used
 /// Includes starting zeros that can be avoided, actual size may be smaller!
 pub fn determine_mvp_space_usage(num_elements: usize, overhead: Float) -> usize {
-    sigma(num_elements, overhead, num_elements).ceil() as usize + Word::BITS as usize
+    total_bits_required(overhead, num_elements)
 }
 /// determine how many bits per key would be used
 /// Includes starting zeros that can be avoided, actual size may be smaller!
 pub fn determine_mvp_bits_per_key(num_elements: usize, overhead: Float) -> Float {
-    (sigma(num_elements, overhead, num_elements).ceil() + Word::BITS as Float)
-        / num_elements as Float
+    total_bits_required(overhead, num_elements) as Float / num_elements as Float
 }
 
 pub struct MphfBuilder<'a, T: Hash, H: BuildHasher + Clone> {
@@ -117,8 +144,7 @@ struct Started {
 impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
     fn new(data: &'a mut [&'a T], overhead: Float, random_state: H) -> Self {
         let size: usize = data.len();
-        assert!(size.is_power_of_two());
-        let max_bit_task = targeted_bits_on_layer(0, overhead, size.ilog2());
+        let max_bit_task = targeted_bits_for_size(size, overhead);
         assert!(
             max_bit_task <= Index::BITS as f64,
             "{max_bit_task}<={} required for impl",
@@ -133,15 +159,14 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
             #[cfg(feature = "debug_output")]
             stats: (),
             #[cfg(feature = "progress")]
-            progress_bar: indicatif::ProgressBar::new(size.ilog2() as u64),
+            progress_bar: indicatif::ProgressBar::new(size.next_power_of_two().ilog2() as u64),
             #[cfg(feature = "progress")]
             saved_progress: 0,
         }
     }
 
     pub fn build(mut self) -> SrsMphf<T, H> {
-        let total_bits = Word::BITS as usize
-            + sigma(self.data.len() - 1, self.overhead, self.data.len()).ceil() as usize;
+        let total_bits = total_bits_required(self.overhead, self.data.len());
         self.information.resize(total_bits, false);
 
         let mut stack = Vec::<TaskState>::with_capacity(self.data.len() - 1);
@@ -177,7 +202,8 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
     }
 
     fn srs_search_iterative(&mut self, root_seed: Word, stack: &mut Vec<TaskState>) -> bool {
-        let num_tasks = self.data.len() - 1;
+        let size = self.data.len();
+        let num_tasks = size - 1;
         stack.clear();
 
         stack.push(TaskState {
@@ -189,11 +215,24 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
         'main: while let Some(frame) = stack.last().copied() {
             let task_idx_1 = stack.len();
 
-            let layer = task_idx_1.ilog2();
-            let chunk = task_idx_1 - (1 << layer);
-            let required_bits = targeted_bits_on_layer(layer, self.overhead, self.data.len().ilog2());
+            let layer = self
+                .data
+                .len()
+                .div_ceil(task_idx_1)
+                .next_power_of_two()
+                .ilog2();
+            let chunk = task_idx_1 - (size >> layer) + (size.trailing_zeros() >= layer) as usize - 1;
 
-            let required_bits = required_bits - frame.fractional_accounted_bits;
+            let ordinary_layer_size = 1 << layer;
+            let is_ordinary = chunk < size >> layer;
+            let task_size = if is_ordinary {
+                ordinary_layer_size
+            } else {
+                size % ordinary_layer_size
+            };
+            let required_bits = targeted_bits_for_size(task_size, self.overhead);
+
+            let required_bits = required_bits - frame.fractional_accounted_bits; // todo do not keep integer part separate go get same rounding errors as when hashing? or separate there too?
             let task_bit_count = required_bits.ceil() as usize; // log2 k
             let new_fractional_accounted_bits = required_bits.ceil() - required_bits;
 
@@ -207,6 +246,7 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
 
             for seed in ((frame.parent_seed << task_bit_count)..)
                 .take(1 << task_bit_count)
+                // skip already tested indices
                 .skip(
                     frame
                         .started
@@ -214,12 +254,11 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
                         .unwrap_or(0),
                 )
             {
-                let layer_size = self.data.len() >> layer;
-                let data_slice = &mut self.data[chunk * layer_size..][..layer_size];
+                let data_slice = &mut self.data[chunk * ordinary_layer_size..][..task_size];
 
-                if self.hasher.is_binary_split(seed, data_slice) {
-                    data_slice.select_nth_unstable_by_key(layer_size / 2, |v| {
-                        self.hasher.hash_binary(seed, v)
+                if self.hasher.is_po2_split(seed, data_slice) {
+                    data_slice.select_nth_unstable_by_key(ordinary_layer_size / 2, |v| {
+                        self.hasher.hash_po2(seed, v, task_size)
                     });
 
                     let index = seed - (frame.parent_seed << task_bit_count);
@@ -319,24 +358,53 @@ fn get_log_p_power(power: u32) -> Float {
     L_P[power as usize]
 }
 
+// fn sigma(j: usize, overhead: Float, size: usize) -> Float {
+//     if j == 0 {
+//         return 0.;
+//     }
 
-fn sigma(j: usize, overhead: Float, size: usize) -> Float {
-    if j == 0 {
-        return 0.;
-    }
+//     let layer = j.ilog2();
+//     let chunk = j - (1 << layer); // starts with 0
 
-    let layer = j.ilog2();
-    let chunk = j - (1 << layer); // starts with 0
-
-    (0..layer)
-        .map(|i| (1 << i) as Float * targeted_bits_on_layer(i, overhead, size.ilog2()))
-        .sum::<Float>()
-        + (chunk + 1) as Float * targeted_bits_on_layer(layer, overhead, size.ilog2())
-}
+//     (0..layer)
+//         .map(|i| (1 << i) as Float * targeted_bits_on_layer(i, overhead, size.ilog2()))
+//         .sum::<Float>()
+//         + (chunk + 1) as Float * targeted_bits_on_layer(layer, overhead, size.ilog2())
+// }
 
 #[inline(always)]
-fn targeted_bits_on_layer(layer: u32, overhead: Float, log_size: u32) -> Float {
-    overhead * ((1 << (log_size - layer)) as Float).sqrt() - get_log_p_power(log_size - layer)
+fn targeted_bits_for_size(size: usize, overhead: Float) -> Float {
+    if size.is_power_of_two() {
+        overhead * (size as Float).sqrt() - get_log_p_power(size.ilog2())
+    } else {
+        overhead * (size as Float).sqrt() // todo correct overhead scaling?
+         - get_log_p_uneven(size)
+    }
+}
+
+// todo cache somehow? fast inverse square root??
+// todo more exact stirling?
+fn get_log_p_uneven(size: usize) -> Float {
+    let r = (1 << size.ilog2()) as Float;
+    let q = r / size as Float;
+
+    -(2. * PI * r * (1. - q)).log2() / 2.
+}
+
+fn total_bits_required(overhead: Float, size: usize) -> usize {
+    (1..=size.next_power_of_two().ilog2())
+        .rev()
+        .map(|i| {
+            (size >> i) as Float * targeted_bits_for_size(1 << i, overhead)
+                + if size % (1 << i) > (1 << (i - 1)) {
+                    targeted_bits_for_size(size % (1 << i), overhead)
+                } else {
+                    0.
+                }
+        })
+        .sum::<Float>()
+        .ceil() as usize
+        + Word::BITS as usize
 }
 
 #[cfg(test)]
@@ -348,7 +416,7 @@ mod test {
     use rand::distributions::{Alphanumeric, DistString};
 
     use crate::mphf::{
-        calc_log_p, determine_mvp_bits_per_key, determine_mvp_space_usage, get_log_p_power, sigma, Float
+        calc_log_p, determine_mvp_bits_per_key, determine_mvp_space_usage, get_log_p_power, Float,
     };
 
     use super::SrsMphf;
@@ -373,40 +441,40 @@ mod test {
         assert_eq!(vals, vals2);
     }
 
-    #[test]
-    fn test_sigma() {
-        let size = 1 << 4;
-        let overhead = 0.01;
-        assert_approx_eq!(Float, 0., sigma(0, overhead, size));
-        assert_approx_eq!(Float, 2.358275566891936, sigma(1, overhead, size));
-        assert_approx_eq!(Float, 4.238992549946969, sigma(2, overhead, size));
-        assert_approx_eq!(Float, 16., sigma(11, overhead, size).ceil());
-    }
+    // #[test]
+    // fn test_sigma() {
+    //     let size = 1 << 4;
+    //     let overhead = 0.01;
+    //     assert_approx_eq!(Float, 0., sigma(0, overhead, size));
+    //     assert_approx_eq!(Float, 2.358275566891936, sigma(1, overhead, size));
+    //     assert_approx_eq!(Float, 4.238992549946969, sigma(2, overhead, size));
+    //     assert_approx_eq!(Float, 16., sigma(11, overhead, size).ceil());
+    // }
 
-    #[test]
-    fn test_sigma_large() {
-        let size = 1 << 7;
-        let overhead = 0.01;
+    // #[test]
+    // fn test_sigma_large() {
+    //     let size = 1 << 7;
+    //     let overhead = 0.01;
 
-        let mut extra_fractional = 0.;
-        let mut bits_so_far = 0;
-        for i in 1usize..size {
-            println!("i={i}");
-            let targeted_bits = overhead - calc_log_p(size >> i.ilog2());
-            let targeted_bits = targeted_bits - extra_fractional;
-            let task_bits = (targeted_bits).ceil() as usize;
-            println!("  {task_bits} bit");
-            extra_fractional = targeted_bits.ceil() - targeted_bits;
-            bits_so_far += task_bits;
+    //     let mut extra_fractional = 0.;
+    //     let mut bits_so_far = 0;
+    //     for i in 1usize..size {
+    //         println!("i={i}");
+    //         let targeted_bits = overhead - calc_log_p(size >> i.ilog2());
+    //         let targeted_bits = targeted_bits - extra_fractional;
+    //         let task_bits = (targeted_bits).ceil() as usize;
+    //         println!("  {task_bits} bit");
+    //         extra_fractional = targeted_bits.ceil() - targeted_bits;
+    //         bits_so_far += task_bits;
 
-            assert_approx_eq!(
-                Float,
-                sigma(i, overhead, size),
-                bits_so_far as Float - extra_fractional,
-                F64Margin::zero().epsilon(1e-10)
-            );
-        }
-    }
+    //         assert_approx_eq!(
+    //             Float,
+    //             sigma(i, overhead, size),
+    //             bits_so_far as Float - extra_fractional,
+    //             F64Margin::zero().epsilon(1e-10)
+    //         );
+    //     }
+    // }
 
     #[test]
     fn test_bit_precalcs() {
@@ -504,6 +572,36 @@ mod test {
         let hashes = (0..size).map(|v| mphf.hash(&v)).collect::<HashSet<_>>();
         assert_eq!(hashes.len(), size);
     }
+
+    
+    #[test]
+    fn test_create_npo2_mphf() {
+        let size = 10000;
+        let overhead = 0.001;
+        let data: Vec<usize> = (0..size).collect::<Vec<_>>();
+
+        let start = time::Instant::now();
+        let mphf = SrsMphf::new(&data, overhead);
+        let took = start.elapsed();
+
+        println!(
+            "done building in {:?} for size {size} uses {} bits, {} per key",
+            took,
+            mphf.bit_size(),
+            mphf.bit_per_key()
+        );
+        println!(
+            "data: {:?}",
+            mphf.information
+                .iter()
+                .map(|b| usize::from(*b).to_string())
+                .collect::<String>()
+        );
+
+        let hashes = (0..size).map(|v| mphf.hash(&v)).collect::<HashSet<_>>();
+        assert_eq!(hashes.len(), size);
+    }
+
 
     #[test]
     fn pareto() {

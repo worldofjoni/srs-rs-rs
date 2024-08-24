@@ -233,6 +233,49 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
 
         hash & 1
     }
+
+    // --- non power of twos
+    
+    pub fn is_po2_split(&self, seed: usize, values: &mut [&impl Hash]) -> bool {
+        if values.len().is_power_of_two() {
+            self.is_binary_split(seed, values)
+        } else {
+            self.is_fraction_split(seed, values)
+        }
+    }
+    
+    pub fn hash_po2(&self, seed: usize, value: &impl Hash, size: usize) -> usize {
+        if size.is_power_of_two() {
+            self.hash_binary(seed, value)
+        } else {
+            self.hash_ratio(seed, value, size)
+        }
+    }
+    
+    /// splits into power-of-two- and rest-sized parts
+    pub fn is_fraction_split(&self, seed: usize, values: &mut [&impl Hash]) -> bool {
+        let mut child_sizes = [0_usize; 2];
+        let size = values.len();
+
+        for val in values {
+            let child_idx = self.hash_ratio(seed, val, size);
+            child_sizes[child_idx] += 1;
+        }
+
+        child_sizes[0] == 1 << size.ilog2()
+    }
+    
+    pub fn hash_ratio(&self, seed: usize, value: &impl Hash, size: usize) -> usize {
+        let mut hasher = self.0.build_hasher();
+
+        hasher.write_usize(seed);
+        value.hash(&mut hasher);
+
+        let hash = hasher.finish() as usize;
+
+        (hash % size >= 1 << size.ilog2()) as usize
+    }
+    
 }
 
 #[cfg(feature = "debug_output")]
