@@ -144,6 +144,10 @@ struct Started {
 impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
     fn new(data: &'a mut [&'a T], overhead: Float, random_state: H) -> Self {
         let size: usize = data.len();
+        assert!(size.ilog2() as usize <= MAX_SIZE_POWER, "internal input size limit reached: limit caused by precomputed constants");
+        assert!(overhead > 0., "overhead needs to be greater than 0, is {overhead}");
+
+        // todo avoid and just limit internally
         let max_bit_task = targeted_bits_for_size(size, overhead);
         assert!(
             max_bit_task <= Index::BITS as f64,
@@ -239,7 +243,7 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
             #[cfg(feature = "progress")]
             {
                 if self.saved_progress != layer as u64 {
-                    self.progress_bar.set_position(layer as u64);
+                    self.progress_bar.set_position((size.next_power_of_two().ilog2() - layer) as u64);
                     self.saved_progress = layer as u64;
                 }
             }
@@ -319,7 +323,8 @@ fn calc_log_p(n: usize) -> Float {
         .sum()
 }
 
-const L_P: [Float; 31] = [
+const MAX_SIZE_POWER: usize = 30;
+const L_P: [Float; MAX_SIZE_POWER + 1] = [
     0.0,
     -1.0,
     -1.415037499278844,
@@ -357,20 +362,6 @@ const L_P: [Float; 31] = [
 fn get_log_p_power(power: u32) -> Float {
     L_P[power as usize]
 }
-
-// fn sigma(j: usize, overhead: Float, size: usize) -> Float {
-//     if j == 0 {
-//         return 0.;
-//     }
-
-//     let layer = j.ilog2();
-//     let chunk = j - (1 << layer); // starts with 0
-
-//     (0..layer)
-//         .map(|i| (1 << i) as Float * targeted_bits_on_layer(i, overhead, size.ilog2()))
-//         .sum::<Float>()
-//         + (chunk + 1) as Float * targeted_bits_on_layer(layer, overhead, size.ilog2())
-// }
 
 #[inline(always)]
 fn targeted_bits_for_size(size: usize, overhead: Float) -> Float {
@@ -412,7 +403,7 @@ mod test {
 
     use std::{collections::HashSet, hint::black_box, time};
 
-    use float_cmp::{assert_approx_eq, F64Margin};
+    use float_cmp::assert_approx_eq;
     use rand::distributions::{Alphanumeric, DistString};
 
     use crate::mphf::{
@@ -441,40 +432,6 @@ mod test {
         assert_eq!(vals, vals2);
     }
 
-    // #[test]
-    // fn test_sigma() {
-    //     let size = 1 << 4;
-    //     let overhead = 0.01;
-    //     assert_approx_eq!(Float, 0., sigma(0, overhead, size));
-    //     assert_approx_eq!(Float, 2.358275566891936, sigma(1, overhead, size));
-    //     assert_approx_eq!(Float, 4.238992549946969, sigma(2, overhead, size));
-    //     assert_approx_eq!(Float, 16., sigma(11, overhead, size).ceil());
-    // }
-
-    // #[test]
-    // fn test_sigma_large() {
-    //     let size = 1 << 7;
-    //     let overhead = 0.01;
-
-    //     let mut extra_fractional = 0.;
-    //     let mut bits_so_far = 0;
-    //     for i in 1usize..size {
-    //         println!("i={i}");
-    //         let targeted_bits = overhead - calc_log_p(size >> i.ilog2());
-    //         let targeted_bits = targeted_bits - extra_fractional;
-    //         let task_bits = (targeted_bits).ceil() as usize;
-    //         println!("  {task_bits} bit");
-    //         extra_fractional = targeted_bits.ceil() - targeted_bits;
-    //         bits_so_far += task_bits;
-
-    //         assert_approx_eq!(
-    //             Float,
-    //             sigma(i, overhead, size),
-    //             bits_so_far as Float - extra_fractional,
-    //             F64Margin::zero().epsilon(1e-10)
-    //         );
-    //     }
-    // }
 
     #[test]
     fn test_bit_precalcs() {
@@ -632,7 +589,7 @@ mod test {
     #[test]
     #[ignore]
     fn create_mphf_flame() {
-        let size = 1 << 16;
+        let size = (1 << 16) - 1;
         let overhead = 0.01;
         let data = (0..size).collect::<Vec<_>>();
 

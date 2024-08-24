@@ -63,7 +63,7 @@ fn create_many_sizes(c: &mut Criterion) {
     const OVERHEAD: f64 = 0.01;
     const MAX: usize = 20;
 
-    for size in (4..MAX).map(|i| 1 << i) {
+    for size in (4..MAX).map(|i| 1 << i).flat_map(|size| [size - 1, size]) {
         group.throughput(criterion::Throughput::Elements(size));
         group.bench_function(BenchmarkId::from_parameter(size), |b| {
             b.iter_batched(
