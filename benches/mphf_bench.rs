@@ -33,6 +33,29 @@ fn create_mphf_single(c: &mut Criterion) {
     group.finish();
 }
 
+fn create_mphf_single_uneven(c: &mut Criterion) {
+    let mut group = c.benchmark_group("create single uneven srs mphf (size = 2^15 - 1)");
+
+    const SIZE: usize = (1 << 15) - 1;
+    const OVERHEAD: f64 = 0.01;
+
+    group.warm_up_time(Duration::from_secs(10));
+    group.sample_size(10);
+
+    group.bench_function("create", |b| {
+        b.iter_batched(
+            || gen_input(SIZE),
+            |input| {
+                SrsMphf::new(input.as_slice(), OVERHEAD);
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
+
+    
+    group.finish();
+}
+
 fn create_mphf_large(c: &mut Criterion) {
     let mut group = c.benchmark_group("create single large srs mphf (size = 65536)");
 
@@ -40,7 +63,7 @@ fn create_mphf_large(c: &mut Criterion) {
     const OVERHEAD: f64 = 0.01;
 
     group.warm_up_time(Duration::from_secs(10));
-    group.sample_size(100);
+    group.sample_size(10);
 
     group.bench_function("create", |b| {
         b.iter_batched(
@@ -240,6 +263,7 @@ fn gen_input(size: usize) -> Vec<[usize; 8]> {
 criterion_group!(
     benches,
     create_mphf_single,
+    create_mphf_single_uneven,
     create_mphf_large,
     create_many_sizes,
     create_many_eps,
