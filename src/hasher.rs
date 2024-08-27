@@ -271,9 +271,11 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
         hasher.write_usize(seed);
         value.hash(&mut hasher);
 
-        let hash = hasher.finish() as usize;
+        let hash = hasher.finish();
 
-        (hash % size >= 1 << size.ilog2()) as usize
+        let distributed = ((hash as u128 * size as u128) >> u64::BITS) as usize;
+
+        (distributed >= 1 << size.ilog2()) as usize
     }
     
 }

@@ -183,11 +183,42 @@ fn hash_speed(c: &mut Criterion) {
     });
 }
 
+fn dist(c: &mut Criterion) {
+    let mut group: criterion::BenchmarkGroup<'_, criterion::measurement::WallTime> =
+        c.benchmark_group("distribute");
+
+    let size: usize = 123141489724;
+
+    group.bench_function("mod", |b| {
+        b.iter_batched(
+            rand::random,
+            |seed: u64| seed as usize % size >= 1 << size.ilog2(),
+            criterion::BatchSize::SmallInput,
+        )
+    });
+    group.bench_function("fast dist", |b| {
+        b.iter_batched(
+            rand::random,
+            |seed: u64| ((seed as u128 * size as u128) >> 64 ) as usize >= 1 << size.ilog2(),
+            criterion::BatchSize::SmallInput,
+        )
+    });
+    group.bench_function("and", |b| {
+        b.iter_batched(
+            rand::random,
+            |seed: u64| (seed & 1) as usize,
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+}
+
 criterion_group!(
     benches,
     check_hash_function,
     find_hash_function,
     round_floor,
-    hash_speed
+    hash_speed,
+    dist
 );
 criterion_main!(benches);
