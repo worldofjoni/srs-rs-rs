@@ -64,5 +64,9 @@ harness = false
 # path = "src/bin.rs"
 
 [profile.release]
-debug = true # for flamegraph
 lto = "thin"
+
+[profile.profile]
+inherits = "release"
+debug = true # for flamegraph
+

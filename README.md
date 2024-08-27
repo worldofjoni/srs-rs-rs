@@ -64,3 +64,16 @@ Rebuilding the desired binary and/or cleaning the release directory may help if 
 ## Graph generation
 To generate a graph, run the according test using
 `cargo test --release --all-features -- --ignored --nocapture <test_name>`
+
+
+## Perf
+- `cargo build --profile profile --tests`
+- `perf record -g  target/profile/deps/srs-xxxx -- <test to test>`
+- `perf report -i perf.data`
+- convert for firefox profiler: `perf script -F +pid > ff.perf`
+
+
+### Perf in WSL2
+install `linux-tools` and use `/usr/lib/linux-tools/xxx-generic/perf`
+
+TODO is this working correctly?

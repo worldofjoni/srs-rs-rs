@@ -4,3 +4,6 @@ flamegraph.svg
 out
 asm
 srs_mphf.*
+
+perf.data*
+*.perf
