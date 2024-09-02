@@ -144,8 +144,10 @@ struct Started {
 impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
     fn new(data: &'a mut [&'a T], overhead: Float, random_state: H) -> Self {
         let size: usize = data.len();
-        assert!(size.ilog2() as usize <= MAX_SIZE_POWER, "internal input size limit reached: limit caused by precomputed constants");
-        assert!(overhead > 0., "overhead needs to be greater than 0, is {overhead}");
+        assert!(
+            overhead > 0.,
+            "overhead needs to be greater than 0, is {overhead}"
+        );
 
         // todo avoid and just limit internally
         let max_bit_task = targeted_bits_for_size(size, overhead);
@@ -225,7 +227,8 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
                 .div_ceil(task_idx_1)
                 .next_power_of_two()
                 .ilog2();
-            let chunk = task_idx_1 - (size >> layer) + (size.trailing_zeros() >= layer) as usize - 1;
+            let chunk =
+                task_idx_1 - (size >> layer) + (size.trailing_zeros() >= layer) as usize - 1;
 
             let ordinary_layer_size = 1 << layer;
             let is_ordinary = chunk < size >> layer;
@@ -243,7 +246,8 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
             #[cfg(feature = "progress")]
             {
                 if self.saved_progress != layer as u64 {
-                    self.progress_bar.set_position((size.next_power_of_two().ilog2() - layer) as u64);
+                    self.progress_bar
+                        .set_position((size.next_power_of_two().ilog2() - layer) as u64);
                     self.saved_progress = layer as u64;
                 }
             }
@@ -365,12 +369,15 @@ fn get_log_p_power(power: u32) -> Float {
 
 #[inline(always)]
 fn targeted_bits_for_size(size: usize, overhead: Float) -> Float {
-    if size.is_power_of_two() {
-        overhead * (size as Float).sqrt() - get_log_p_power(size.ilog2())
-    } else {
-        overhead * (size as Float).sqrt() // todo correct overhead scaling?
-         - get_log_p_uneven(size)
-    }
+    let max = (Word::BITS - 1) as Float; // needs to be smaller than Word::BITS, even with float imprecisions
+    (overhead / 3.4 * (size as Float).sqrt() // * size.ilog2().pow(2) as Float // with correction factor 48
+        + if size.is_power_of_two() {
+            -get_log_p_power(size.ilog2())
+        } else {
+            // todo correct overhead scaling?
+            -get_log_p_uneven(size)
+        })
+    .min(max)
 }
 
 // todo cache somehow? fast inverse square root??
@@ -431,7 +438,6 @@ mod test {
         let vals2 = (0..=size).map(get_log_p_power).collect::<Vec<_>>();
         assert_eq!(vals, vals2);
     }
-
 
     #[test]
     fn test_bit_precalcs() {
@@ -530,7 +536,6 @@ mod test {
         assert_eq!(hashes.len(), size);
     }
 
-    
     #[test]
     fn test_create_npo2_mphf() {
         let size = 10000;
@@ -559,7 +564,6 @@ mod test {
         assert_eq!(hashes.len(), size);
     }
 
-
     #[test]
     fn pareto() {
         const SIZE: usize = 1 << 20;
@@ -575,7 +579,7 @@ mod test {
         };
         let input = black_box(gen_input());
 
-        for overhead in [0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001] {
+        for overhead in [1., 0.5, 0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001] {
             let start = time::Instant::now();
             let mphf = black_box(SrsMphf::new(&input, overhead));
             let took = start.elapsed();

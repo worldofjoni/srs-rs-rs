@@ -80,13 +80,14 @@ fn create_mphf_large(c: &mut Criterion) {
 
 fn create_many_sizes(c: &mut Criterion) {
     let mut group = c.benchmark_group("crate multiple mphf with different sizes");
-    group.measurement_time(Duration::from_secs(10));
+    group.measurement_time(Duration::from_secs(3));
     group.sample_size(10);
 
-    const OVERHEAD: f64 = 0.01;
+    const OVERHEAD: f64 = 0.1;
     const MAX: usize = 20;
 
     for size in (4..MAX).map(|i| 1 << i).flat_map(|size| [size - 1, size]) {
+        group.warm_up_time(Duration::from_millis(1));
         group.throughput(criterion::Throughput::Elements(size));
         group.bench_function(BenchmarkId::from_parameter(size), |b| {
             b.iter_batched(
