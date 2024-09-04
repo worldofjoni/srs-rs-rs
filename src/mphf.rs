@@ -14,7 +14,7 @@ type Word = usize;
 pub type Float = f64;
 type DefaultHash = wyhash2::WyHash;
 
-pub struct SrsMphf<T: Hash, H: BuildHasher + Clone = DefaultHash> {
+pub struct SrsMphf<T: Hash, H: BuildHasher = DefaultHash> {
     _phantom: PhantomData<T>,
     hasher: RecHasher<H>,
     /// includes root seed
@@ -26,7 +26,7 @@ pub struct SrsMphf<T: Hash, H: BuildHasher + Clone = DefaultHash> {
     stats: (),
 }
 
-impl<'a, T: Hash + 'a, H: BuildHasher + Clone> SrsMphf<T, H> {
+impl<'a, T: Hash + 'a, H: BuildHasher> SrsMphf<T, H> {
     pub fn with_state(data: impl IntoIterator<Item = &'a T>, overhead: Float, state: H) -> Self {
         MphfBuilder::new(&mut data.into_iter().collect::<Vec<_>>(), overhead, state).build()
     }
@@ -113,7 +113,7 @@ pub fn determine_mvp_bits_per_key(num_elements: usize, overhead: Float) -> Float
     total_bits_required(overhead, num_elements) as Float / num_elements as Float
 }
 
-pub struct MphfBuilder<'a, T: Hash, H: BuildHasher + Clone> {
+pub struct MphfBuilder<'a, T: Hash, H: BuildHasher> {
     data: &'a mut [&'a T],
     /// extra bits per task: overhead=log(1+eps)
     overhead: Float,
@@ -142,7 +142,7 @@ struct Started {
     current_index: Index,
 }
 
-impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
+impl<'a, T: Hash, H: BuildHasher> MphfBuilder<'a, T, H> {
     fn new(data: &'a mut [&'a T], overhead: Float, random_state: H) -> Self {
         let size: usize = data.len();
         assert!(
@@ -261,9 +261,9 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
             {
                 let data_slice = &mut self.data[chunk * ordinary_layer_size..][..task_size];
 
-                if self.hasher.is_po2_split(seed, data_slice) {
+                if self.hasher.is_generic_split(seed, data_slice) {
                     partition_index(data_slice, |v| {
-                        self.hasher.hash_po2(seed, v, task_size) == 0
+                        self.hasher.hash_generic(seed, v, task_size) == 0
                     });
 
                     let index = seed - (frame.parent_seed << task_bit_count);
@@ -317,7 +317,7 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
 #[allow(unused)]
 fn calc_log_p(n: usize) -> Float {
     assert!(n.is_power_of_two(), "n={n}");
-    // todo stirling good enough?
+    // stirling approx would probably do as well
     (1..=n / 2)
         .map(|i| (n as Float / (8. * i as Float)) + 0.25)
         .map(Float::log2)
@@ -377,7 +377,6 @@ fn targeted_bits_for_size(size: usize, overhead: Float) -> Float {
     .min(max)
 }
 
-// todo cache somehow? fast inverse square root??
 // todo more exact stirling?
 fn get_log_p_uneven(size: usize) -> Float {
     let r = (1 << size.ilog2()) as Float;

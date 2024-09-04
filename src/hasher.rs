@@ -2,10 +2,10 @@ use std::hash::{BuildHasher, Hash, Hasher};
 
 use crate::{recsplit::MAX_LEAF_SIZE, splitting_tree::SplittingTree};
 
-#[derive(Debug, Clone)]
-pub struct RecHasher<H: BuildHasher + Clone>(pub H);
+#[derive(Debug)]
+pub struct RecHasher<H: BuildHasher>(pub H);
 
-impl<H: BuildHasher + Clone> RecHasher<H> {
+impl<H: BuildHasher> RecHasher<H> {
     pub fn hash_with_tree(&self, tree: &SplittingTree, value: &impl Hash) -> usize {
         match tree {
             SplittingTree::Inner {
@@ -210,9 +210,11 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
         distribute(hash, num_buckets)
     }
 
-    // MPHF with binary splits
+    // ============== MPHF with binary splits ===============================================================
 
     pub fn is_binary_split(&self, seed: usize, values: &[&impl Hash]) -> bool {
+        let size = values.len();
+        debug_assert!(size & 1 == 0);
         let mut child_sizes = [0_usize; 2];
 
         for val in values {
@@ -220,7 +222,7 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
             child_sizes[child_idx] += 1;
         }
 
-        child_sizes[0] == child_sizes[1]
+        child_sizes[0] == size >> 1
     }
 
     pub fn hash_binary(&self, seed: usize, value: &impl Hash) -> usize {
@@ -235,25 +237,25 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
     }
 
     // --- non power of twos
-    
-    pub fn is_po2_split(&self, seed: usize, values: &mut [&impl Hash]) -> bool {
+
+    pub fn is_generic_split(&self, seed: usize, values: &mut [&impl Hash]) -> bool {
         if values.len().is_power_of_two() {
             self.is_binary_split(seed, values)
         } else {
-            self.is_fraction_split(seed, values)
+            self.is_ratio_split(seed, values)
         }
     }
-    
-    pub fn hash_po2(&self, seed: usize, value: &impl Hash, size: usize) -> usize {
+
+    pub fn hash_generic(&self, seed: usize, value: &impl Hash, size: usize) -> usize {
         if size.is_power_of_two() {
             self.hash_binary(seed, value)
         } else {
             self.hash_ratio(seed, value, size)
         }
     }
-    
+
     /// splits into power-of-two- and rest-sized parts
-    pub fn is_fraction_split(&self, seed: usize, values: &mut [&impl Hash]) -> bool {
+    pub fn is_ratio_split(&self, seed: usize, values: &mut [&impl Hash]) -> bool {
         let mut child_sizes = [0_usize; 2];
         let size = values.len();
 
@@ -264,7 +266,7 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
 
         child_sizes[0] == 1 << size.ilog2()
     }
-    
+
     pub fn hash_ratio(&self, seed: usize, value: &impl Hash, size: usize) -> usize {
         let mut hasher = self.0.build_hasher();
 
@@ -277,7 +279,6 @@ impl<H: BuildHasher + Clone> RecHasher<H> {
 
         (distributed >= 1 << size.ilog2()) as usize
     }
-    
 }
 
 #[cfg(feature = "debug_output")]
