@@ -6,6 +6,7 @@ use std::{
 };
 
 use bitvec::{field::BitField, order::Msb0, vec::BitVec};
+use partition::partition_index;
 
 use crate::RecHasher;
 
@@ -261,8 +262,8 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
                 let data_slice = &mut self.data[chunk * ordinary_layer_size..][..task_size];
 
                 if self.hasher.is_po2_split(seed, data_slice) {
-                    data_slice.select_nth_unstable_by_key(ordinary_layer_size / 2, |v| {
-                        self.hasher.hash_po2(seed, v, task_size)
+                    partition_index(data_slice, |v| {
+                        self.hasher.hash_po2(seed, v, task_size) == 0
                     });
 
                     let index = seed - (frame.parent_seed << task_bit_count);
