@@ -148,13 +148,9 @@ impl<'a, T: Hash, H: BuildHasher + Clone> MphfBuilder<'a, T, H> {
             overhead > 0.,
             "overhead needs to be greater than 0, is {overhead}"
         );
-
-        // todo avoid and just limit internally
-        let max_bit_task = targeted_bits_for_size(size, overhead);
         assert!(
-            max_bit_task <= Index::BITS as f64,
-            "{max_bit_task}<={} required for impl",
-            Index::BITS
+            size.ilog2() as usize <= MAX_SIZE_POWER,
+            "internal input size limit reached: limit caused by precomputed constants"
         );
 
         Self {
