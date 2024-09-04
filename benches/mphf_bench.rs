@@ -1,4 +1,7 @@
-use std::time::Duration;
+use std::{
+    hash::BuildHasherDefault,
+    time::Duration,
+};
 
 use ahash::HashSet;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, PlotConfiguration};
@@ -52,7 +55,6 @@ fn create_mphf_single_uneven(c: &mut Criterion) {
         )
     });
 
-    
     group.finish();
 }
 
@@ -135,7 +137,7 @@ fn hash(c: &mut Criterion) {
     let overhead = 0.01;
     for size in 4..=20 {
         let size = 1usize << size;
-        
+
         group.bench_function(BenchmarkId::from_parameter(size.ilog2()), |b| {
             let data = &(0..size).collect::<Vec<_>>();
             let mphf = SrsMphf::new(data, overhead);
@@ -190,6 +192,8 @@ fn different_hashers(c: &mut Criterion) {
     let random = random();
     // group.sample_size(10);
 
+    // todo compere on different datatype sizes
+
     group.bench_function("std::hash", |b| {
         b.iter_batched(
             || gen_input(SIZE),
@@ -216,11 +220,37 @@ fn different_hashers(c: &mut Criterion) {
             criterion::BatchSize::LargeInput,
         )
     });
+    group.bench_function("wyhash", |b| {
+        b.iter_batched(
+            || gen_input(SIZE),
+            |input| {
+                SrsMphf::with_state(
+                    input.as_slice(),
+                    overhead,
+                    BuildHasherDefault::<wyhash::WyHash>::default(),
+                );
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
     group.bench_function("wy2hash", |b| {
         b.iter_batched(
             || gen_input(SIZE),
             |input| {
                 SrsMphf::with_state(input.as_slice(), overhead, wyhash2::WyHash::default());
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
+    group.bench_function("wyhash final4", |b| {
+        b.iter_batched(
+            || gen_input(SIZE),
+            |input| {
+                SrsMphf::with_state(
+                    input.as_slice(),
+                    overhead,
+                    BuildHasherDefault::<wyhash_final4::generics::WyHasher<wyhash_final4::WyHash64>>::default(),
+                );
             },
             criterion::BatchSize::LargeInput,
         )
@@ -240,15 +270,15 @@ fn different_hashers(c: &mut Criterion) {
     });
 
     // does not terminate, too bad quality?
-    // group.bench_function("fxhash", |b| {
-    //     b.iter_batched(
-    //         gen_input,
-    //         |input| {
-    //             SrsMphf::with_state(&input, overhead, fxhash::FxBuildHasher::default());
-    //         },
-    //         criterion::BatchSize::LargeInput,
-    //     )
-    // });
+    group.bench_function("fxhash", |b| {
+        b.iter_batched(
+            || gen_input(SIZE),
+            |input| {
+                SrsMphf::with_state(&input, overhead, fxhash::FxBuildHasher::default());
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
 }
 
 fn gen_input(size: usize) -> Vec<[usize; 8]> {
