@@ -404,7 +404,7 @@ fn total_bits_required(overhead: Float, size: usize) -> usize {
 #[cfg(test)]
 mod test {
 
-    use std::{collections::HashSet, hint::black_box, time};
+    use std::{collections::HashSet, f64::consts::E, hint::black_box, time};
 
     use float_cmp::assert_approx_eq;
     use rand::{distributions::{Alphanumeric, DistString}, random};
@@ -583,6 +583,7 @@ mod test {
                 "param {overhead}, bpk {}, took {took:?}",
                 mphf.bit_per_key()
             );
+            println!("RESULT {},{}", mphf.bit_per_key() - E.log2(), took.as_nanos());
         }
     }
 
