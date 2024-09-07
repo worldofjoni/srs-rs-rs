@@ -6,13 +6,20 @@ edition = "2021"
 license = "MIT"
 description = "minimal perfect hash function using near minimal space"
 repository = "https://github.com/worldofjoni/RecSplit"
-keywords = ["hashing", "mphf", "perfect-hash", "perfect", "brute force", "random seach"]
+keywords = [
+    "hashing",
+    "mphf",
+    "perfect-hash",
+    "perfect",
+    "brute force",
+    "random seach",
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 bitvec = "1.0.1"
-cxx = {version = "1.0.126", optional = true}
+cxx = { version = "1.0.126", optional = true }
 env_logger = "0.11.3"
 indicatif = { version = "0.17.8", optional = true }
 log = "0.4.21"
@@ -67,9 +74,8 @@ harness = false
 # path = "src/bin.rs"
 
 [profile.release]
-lto = "thin"
+# lto = "thin" # no longer necessary/beteficial
 
 [profile.profile]
 inherits = "release"
-debug = true # for flamegraph
-
+debug = true         # for flamegraph

@@ -407,7 +407,7 @@ mod test {
     use std::{collections::HashSet, hint::black_box, time};
 
     use float_cmp::assert_approx_eq;
-    use rand::distributions::{Alphanumeric, DistString};
+    use rand::{distributions::{Alphanumeric, DistString}, random};
 
     use crate::mphf::{
         calc_log_p, determine_mvp_bits_per_key, determine_mvp_space_usage, get_log_p_power, Float,
@@ -584,6 +584,13 @@ mod test {
                 mphf.bit_per_key()
             );
         }
+    }
+
+    #[test]
+    #[ignore = "does not terminate"]
+    fn test_fx_hash() {
+        let input: [usize; 1024] = random();
+        SrsMphf::with_state(&input, 0.1, fxhash::FxBuildHasher::default());
     }
 
     #[test]

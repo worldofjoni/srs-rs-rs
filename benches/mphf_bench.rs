@@ -268,16 +268,17 @@ fn different_hashers(c: &mut Criterion) {
         )
     });
 
-    // does not terminate, too bad quality?
-    group.bench_function("fxhash", |b| {
-        b.iter_batched(
-            || gen_input::<WORDS>(SIZE),
-            |input| {
-                SrsMphf::with_state(&input, overhead, fxhash::FxBuildHasher::default());
-            },
-            criterion::BatchSize::LargeInput,
-        )
-    });
+    // does not terminate for WORDs=1
+
+    // group.bench_function("fxhash", |b| {
+    //     b.iter_batched(
+    //         || gen_input::<WORDS>(SIZE),
+    //         |input| {
+    //             SrsMphf::with_state(&input, overhead, fxhash::FxBuildHasher::default());
+    //         },
+    //         criterion::BatchSize::LargeInput,
+    //     )
+    // });
 }
 
 fn gen_input<const N: usize>(size: usize) -> Vec<[usize; N]> {
