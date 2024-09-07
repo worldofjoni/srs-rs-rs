@@ -583,7 +583,7 @@ mod test {
                 "param {overhead}, bpk {}, took {took:?}",
                 mphf.bit_per_key()
             );
-            println!("RESULT {},{}", mphf.bit_per_key() - E.log2(), took.as_nanos());
+            println!("RESULT {},{},{}", mphf.bit_per_key() - E.log2(), took.as_nanos(), SIZE as Float / took.as_nanos() as Float * 10f64.powi(9));
         }
     }
 
