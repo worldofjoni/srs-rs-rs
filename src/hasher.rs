@@ -228,12 +228,7 @@ impl<H: BuildHasher> RecHasher<H> {
     }
 
     pub fn hash_binary(&self, seed: usize, value: HashVal) -> usize {
-        let mut hasher = self.0.build_hasher();
-
-        hasher.write_usize(seed);
-        value.hash(&mut hasher);
-
-        let hash = hasher.finish() as usize;
+        let hash = self.hash(seed, value) as usize;
 
         hash & 1
     }
@@ -270,16 +265,19 @@ impl<H: BuildHasher> RecHasher<H> {
     }
 
     pub fn hash_ratio(&self, seed: usize, value: HashVal, size: usize) -> usize {
-        let mut hasher = self.0.build_hasher();
-
-        hasher.write_usize(seed);
-        value.hash(&mut hasher);
-
-        let hash = hasher.finish();
+        let hash = self.hash(seed, value);
 
         let distributed = ((hash as u128 * size as u128) >> u64::BITS) as usize;
 
         (distributed >= 1 << size.ilog2()) as usize
+    }
+
+    fn hash(&self, seed: usize, value: HashVal) -> u64 {
+        let mut hasher = self.0.build_hasher();
+
+        hasher.write_u64(seed as u64 ^ value);
+
+        hasher.finish()
     }
 }
 
