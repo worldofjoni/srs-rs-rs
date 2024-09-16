@@ -46,7 +46,7 @@ int main()
 To use [cargo flamegraph](https://github.com/flamegraph-rs/flamegraph) on windows, use [dtrace_blondie](https://github.com/nico-abram/blondie/) instead of windows dtrace.
 Therefore install blondie with `cargo install blondie` and set the `DTRACE` env var to the path to blondie:
 `$env:DTRACE = "dtrace_blondie"`.
-Then you can run flamegraph as usual, eg.g with `cargo flamegraph --unit-test -- <test_name>` in a admin terminal or with sudo.
+Then you can run flamegraph as usual, eg.g with `cargo flamegraph --unit-test --profile profile -- <test_name>` in a admin terminal or with sudo.
 
 #### Recursive Functions
 The standart flamegraph for recursive functions is not very helpful because for every call, the stack gets larger and larger and thus these calls do not get unified in the flamegraph.
