@@ -374,7 +374,7 @@ fn targeted_bits_for_size(size: usize, overhead: Float) -> Float {
             // todo correct overhead scaling?
             -get_log_p_uneven(size)
         })
-    .min(max)
+    .min(max) // todo shout out when max is applied because this effectively means space is wasted...
 }
 
 // todo more exact stirling?
