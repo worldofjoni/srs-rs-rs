@@ -28,7 +28,11 @@ pub struct SrsMphf<T: Hash, H: BuildHasher = DefaultHash> {
 
 impl<'a, T: Hash + 'a, H: BuildHasher> SrsMphf<T, H> {
     pub fn with_state(data: impl IntoIterator<Item = &'a T>, overhead: Float, state: H) -> Self {
-        MphfBuilder::new(&mut data.into_iter().collect::<Vec<_>>(), overhead, state).build()
+        let hash_values = data
+            .into_iter()
+            .map(|v| state.hash_one(v))
+            .collect::<Vec<_>>();
+        MphfBuilder::new(hash_values, overhead, state).build()
     }
 }
 
@@ -40,6 +44,8 @@ impl<'a, T: Hash + 'a> SrsMphf<T> {
     pub fn hash(&self, value: &T) -> usize {
         let mut result = 0;
         let mut cumulative_bits = 0.;
+
+        let value = self.hasher.0.hash_one(value);
 
         let log_size = self.size.next_power_of_two().ilog2();
 
@@ -113,8 +119,8 @@ pub fn determine_mvp_bits_per_key(num_elements: usize, overhead: Float) -> Float
     total_bits_required(overhead, num_elements) as Float / num_elements as Float
 }
 
-pub struct MphfBuilder<'a, T: Hash, H: BuildHasher> {
-    data: &'a mut [&'a T],
+pub struct MphfBuilder<H: BuildHasher> {
+    data: Vec<u64>,
     /// extra bits per task: overhead=log(1+eps)
     overhead: Float,
     hasher: RecHasher<H>,
@@ -142,8 +148,8 @@ struct Started {
     current_index: Index,
 }
 
-impl<'a, T: Hash, H: BuildHasher> MphfBuilder<'a, T, H> {
-    fn new(data: &'a mut [&'a T], overhead: Float, random_state: H) -> Self {
+impl<H: BuildHasher> MphfBuilder<H> {
+    fn new(data: Vec<u64>, overhead: Float, random_state: H) -> Self {
         let size: usize = data.len();
         assert!(
             overhead > 0.,
@@ -168,7 +174,7 @@ impl<'a, T: Hash, H: BuildHasher> MphfBuilder<'a, T, H> {
         }
     }
 
-    pub fn build(mut self) -> SrsMphf<T, H> {
+    pub fn build<T: Hash>(mut self) -> SrsMphf<T, H> {
         let total_bits = total_bits_required(self.overhead, self.data.len());
         self.information.resize(total_bits, false);
 
@@ -263,7 +269,7 @@ impl<'a, T: Hash, H: BuildHasher> MphfBuilder<'a, T, H> {
 
                 if self.hasher.is_generic_split(seed, data_slice) {
                     partition_index(data_slice, |v| {
-                        self.hasher.hash_generic(seed, v, task_size) == 0
+                        self.hasher.hash_generic(seed, *v, task_size) == 0
                     });
 
                     let index = seed - (frame.parent_seed << task_bit_count);
@@ -407,7 +413,10 @@ mod test {
     use std::{collections::HashSet, f64::consts::E, hint::black_box, time};
 
     use float_cmp::assert_approx_eq;
-    use rand::{distributions::{Alphanumeric, DistString}, random};
+    use rand::{
+        distributions::{Alphanumeric, DistString},
+        random,
+    };
 
     use crate::mphf::{
         calc_log_p, determine_mvp_bits_per_key, determine_mvp_space_usage, get_log_p_power, Float,
@@ -583,7 +592,12 @@ mod test {
                 "param {overhead}, bpk {}, took {took:?}",
                 mphf.bit_per_key()
             );
-            println!("RESULT {},{},{}", mphf.bit_per_key() - E.log2(), took.as_nanos(), SIZE as Float / took.as_nanos() as Float * 10f64.powi(9));
+            println!(
+                "RESULT {},{},{}",
+                mphf.bit_per_key() - E.log2(),
+                took.as_nanos(),
+                SIZE as Float / took.as_nanos() as Float * 10f64.powi(9)
+            );
         }
     }
 

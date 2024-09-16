@@ -5,6 +5,8 @@ use crate::{recsplit::MAX_LEAF_SIZE, splitting_tree::SplittingTree};
 #[derive(Debug)]
 pub struct RecHasher<H: BuildHasher>(pub H);
 
+type HashVal = u64;
+
 impl<H: BuildHasher> RecHasher<H> {
     pub fn hash_with_tree(&self, tree: &SplittingTree, value: &impl Hash) -> usize {
         match tree {
@@ -212,20 +214,20 @@ impl<H: BuildHasher> RecHasher<H> {
 
     // ============== MPHF with binary splits ===============================================================
 
-    pub fn is_binary_split(&self, seed: usize, values: &[&impl Hash]) -> bool {
+    pub fn is_binary_split(&self, seed: usize, values: &[HashVal]) -> bool {
         let size = values.len();
         debug_assert!(size & 1 == 0);
         let mut child_sizes = [0_usize; 2];
 
         for val in values {
-            let child_idx = self.hash_binary(seed, val);
+            let child_idx = self.hash_binary(seed, *val);
             child_sizes[child_idx] += 1;
         }
 
         child_sizes[0] == size >> 1
     }
 
-    pub fn hash_binary(&self, seed: usize, value: &impl Hash) -> usize {
+    pub fn hash_binary(&self, seed: usize, value: HashVal) -> usize {
         let mut hasher = self.0.build_hasher();
 
         hasher.write_usize(seed);
@@ -238,7 +240,7 @@ impl<H: BuildHasher> RecHasher<H> {
 
     // --- non power of twos
 
-    pub fn is_generic_split(&self, seed: usize, values: &mut [&impl Hash]) -> bool {
+    pub fn is_generic_split(&self, seed: usize, values: &[HashVal]) -> bool {
         if values.len().is_power_of_two() {
             self.is_binary_split(seed, values)
         } else {
@@ -246,7 +248,7 @@ impl<H: BuildHasher> RecHasher<H> {
         }
     }
 
-    pub fn hash_generic(&self, seed: usize, value: &impl Hash, size: usize) -> usize {
+    pub fn hash_generic(&self, seed: usize, value: HashVal, size: usize) -> usize {
         if size.is_power_of_two() {
             self.hash_binary(seed, value)
         } else {
@@ -255,19 +257,19 @@ impl<H: BuildHasher> RecHasher<H> {
     }
 
     /// splits into power-of-two- and rest-sized parts
-    pub fn is_ratio_split(&self, seed: usize, values: &mut [&impl Hash]) -> bool {
+    pub fn is_ratio_split(&self, seed: usize, values: &[HashVal]) -> bool {
         let mut child_sizes = [0_usize; 2];
         let size = values.len();
 
         for val in values {
-            let child_idx = self.hash_ratio(seed, val, size);
+            let child_idx = self.hash_ratio(seed, *val, size);
             child_sizes[child_idx] += 1;
         }
 
         child_sizes[0] == 1 << size.ilog2()
     }
 
-    pub fn hash_ratio(&self, seed: usize, value: &impl Hash, size: usize) -> usize {
+    pub fn hash_ratio(&self, seed: usize, value: HashVal, size: usize) -> usize {
         let mut hasher = self.0.build_hasher();
 
         hasher.write_usize(seed);
@@ -417,7 +419,7 @@ mod test {
         let hasher = RecHasher(ahash::RandomState::new());
         let mut nums = [0; 2];
         for i in 0..1000 {
-            let hash = hasher.hash_binary(101010, &i);
+            let hash = hasher.hash_binary(101010, i);
             nums[hash] += 1;
         }
         println!("{nums:?}");
@@ -427,8 +429,8 @@ mod test {
     fn test_is_binary_split() {
         let hasher = RecHasher(ahash::RandomState::new());
         let size = 100;
-        let values = (0..size).collect::<Vec<_>>();
-        let values = values.iter().collect::<Vec<_>>();
+        let values = (0u64..size).collect::<Vec<_>>();
+        // let values = values.iter().collect::<Vec<_>>();
 
         let mut seed = 0;
         for seed2 in 0.. {
@@ -441,7 +443,7 @@ mod test {
 
         let mut nums = [0; 2];
         for i in values {
-            let hash = hasher.hash_binary(seed, &i);
+            let hash = hasher.hash_binary(seed, i);
             nums[hash] += 1;
         }
         println!("{nums:?}");
