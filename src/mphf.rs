@@ -608,14 +608,27 @@ mod test {
         let overhead = 0.01;
 
         for size in (10_000..=100_000).step_by(10_000) {
-            let data: Vec<usize> = (0..size).collect::<Vec<_>>();
-            let _ = SrsMphf::new(&data, overhead);
-            let evals = HASH_EVALS.get();
-            HASH_EVALS.set(0);
+            let samples = 10;
 
-            println!("RESULT-hash_evals_size {size}, {overhead}, {evals}");
+            let mut evals = 0;
+            let mut bpk = 0.;
+            for _ in 0..samples {
+                let data = gen_input::<1>(size);
+                HASH_EVALS.set(0);
+                let mphf = SrsMphf::new(&data, overhead);
+                evals += HASH_EVALS.get();
+
+                bpk += mphf.bit_per_key();
+            }
+
+            println!(
+                "RESULT-hash_evals_size {size}, {overhead}, {evals}, {bpk}",
+                evals = evals as f64 / samples as f64,
+                bpk = bpk / samples as f64
+            );
         }
     }
+    
     #[test]
     #[cfg(feature = "debug_output")]
     fn hash_evals_overhead() {
@@ -623,12 +636,23 @@ mod test {
         let size = 100_000;
 
         for overhead in [1., 0.5, 0.1, 0.05, 0.01, 0.005, 0.001] {
-            let data: Vec<usize> = (0..size).collect::<Vec<_>>();
-            let _ = SrsMphf::new(&data, overhead);
-            let evals = HASH_EVALS.get();
-            HASH_EVALS.set(0);
+            let samples = 10;
+            let mut evals = 0;
+            let mut bpk = 0.;
+            for _ in 0..samples {
+                let data = gen_input::<1>(size);
+                HASH_EVALS.set(0);
+                let mphf = SrsMphf::new(&data, overhead);
+                evals += HASH_EVALS.get();
 
-            println!("RESULT-hash_evals_overhead {size}, {overhead}, {evals}");
+                bpk += mphf.bit_per_key();
+            }
+
+            println!(
+                "RESULT-hash_evals_size {size}, {overhead}, {evals}, {bpk}",
+                evals = evals as f64 / samples as f64,
+                bpk = bpk / samples as f64
+            );
         }
     }
 
@@ -661,6 +685,16 @@ mod test {
         for _ in 0..100 {
             for i in 0..size {
                 mphf.hash(&i);
+            }
+        }
+    }
+
+    fn gen_input<const N: usize>(size: usize) -> Vec<[usize; N]> {
+        loop {
+            let mut data = vec![[0; N]; size];
+            data.iter_mut().for_each(|s| *s = random());
+            if data.iter().collect::<HashSet<_>>().len() == size {
+                return data;
             }
         }
     }
