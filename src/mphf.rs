@@ -622,13 +622,13 @@ mod test {
             }
 
             println!(
-                "RESULT-hash_evals_size {size}, {overhead}, {evals}, {bpk}",
+                "RESULT-hash_evals_size {size}, {overhead}, {evals}, {real_overhead}",
                 evals = evals as f64 / samples as f64,
-                bpk = bpk / samples as f64
+                real_overhead = bpk / samples as f64 - E.log2()
             );
         }
     }
-    
+
     #[test]
     #[cfg(feature = "debug_output")]
     fn hash_evals_overhead() {
@@ -649,9 +649,9 @@ mod test {
             }
 
             println!(
-                "RESULT-hash_evals_size {size}, {overhead}, {evals}, {bpk}",
+                "RESULT-hash_evals_overhead {size}, {overhead}, {evals}, {real_overhead}",
                 evals = evals as f64 / samples as f64,
-                bpk = bpk / samples as f64
+                real_overhead = bpk / samples as f64 - E.log2()
             );
         }
     }
