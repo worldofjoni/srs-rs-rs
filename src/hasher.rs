@@ -224,6 +224,9 @@ impl<H: BuildHasher> RecHasher<H> {
             child_sizes[child_idx] += 1;
         }
 
+        #[cfg(feature = "debug_output")]
+        HASH_EVALS.with(|v| v.set(v.get() + values.len()));
+
         child_sizes[0] == size >> 1
     }
 
@@ -261,6 +264,9 @@ impl<H: BuildHasher> RecHasher<H> {
             child_sizes[child_idx] += 1;
         }
 
+        #[cfg(feature = "debug_output")]
+        HASH_EVALS.with(|v| v.set(v.get() + values.len()));
+
         child_sizes[0] == 1 << size.ilog2()
     }
 
@@ -287,6 +293,8 @@ thread_local! {
     pub static SPLITS_CHECKED: std::cell::Cell<usize> = const {std::cell::Cell::new(0)};
     /// Warning: thread_local!
     pub static BIJECTIONS_CHECKED: std::cell::Cell<usize> = const {std::cell::Cell::new(0)};
+
+    pub static HASH_EVALS: std::cell::Cell<usize> = const {std::cell::Cell::new(0)};
 
 }
 

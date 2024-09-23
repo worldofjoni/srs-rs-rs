@@ -602,6 +602,37 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "debug_output")]
+    fn hash_evals_size() {
+        use crate::hasher::HASH_EVALS;
+        let overhead = 0.01;
+
+        for size in (10_000..=100_000).step_by(10_000) {
+            let data: Vec<usize> = (0..size).collect::<Vec<_>>();
+            let _ = SrsMphf::new(&data, overhead);
+            let evals = HASH_EVALS.get();
+            HASH_EVALS.set(0);
+
+            println!("RESULT {size}, {overhead}, {evals}");
+        }
+    }
+    #[test]
+    #[cfg(feature = "debug_output")]
+    fn hash_evals_overhead() {
+        use crate::hasher::HASH_EVALS;
+        let size = 100_000;
+
+        for overhead in [1., 0.5, 0.1, 0.05, 0.01, 0.005, 0.001] {
+            let data: Vec<usize> = (0..size).collect::<Vec<_>>();
+            let _ = SrsMphf::new(&data, overhead);
+            let evals = HASH_EVALS.get();
+            HASH_EVALS.set(0);
+
+            println!("RESULT {size}, {overhead}, {evals}");
+        }
+    }
+
+    #[test]
     #[ignore = "does not terminate"]
     fn test_fx_hash() {
         let input: [usize; 1024] = random();
