@@ -613,7 +613,7 @@ mod test {
             let evals = HASH_EVALS.get();
             HASH_EVALS.set(0);
 
-            println!("RESULT {size}, {overhead}, {evals}");
+            println!("RESULT-hash_evals_size {size}, {overhead}, {evals}");
         }
     }
     #[test]
@@ -628,7 +628,7 @@ mod test {
             let evals = HASH_EVALS.get();
             HASH_EVALS.set(0);
 
-            println!("RESULT {size}, {overhead}, {evals}");
+            println!("RESULT-hash_evals_overhead {size}, {overhead}, {evals}");
         }
     }
 
