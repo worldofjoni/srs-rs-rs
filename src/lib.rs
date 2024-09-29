@@ -21,9 +21,5 @@ pub mod mphf;
 #[cfg(feature = "cpp_binds")]
 pub mod cpp_bindings;
 
-#[cfg(feature = "debug_output")]
-pub use hasher::BIJECTIONS_CHECKED;
-#[cfg(feature = "debug_output")]
-pub use hasher::SPLITS_CHECKED;
 
 pub use hasher::RecHasher;

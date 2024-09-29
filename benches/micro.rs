@@ -8,7 +8,7 @@ fn check_hash_function(c: &mut Criterion) {
     let mut group: criterion::BenchmarkGroup<'_, criterion::measurement::WallTime> =
         c.benchmark_group("check_hash_function");
 
-    let hasher = RecHasher(ahash::RandomState::new());
+    let hasher = RecHasher::new(ahash::RandomState::new());
 
     let input = [
         123123_usize,
@@ -50,7 +50,7 @@ fn find_hash_function(c: &mut Criterion) {
     let mut group: criterion::BenchmarkGroup<'_, criterion::measurement::WallTime> =
         c.benchmark_group("find_hash_function");
 
-    let hasher = RecHasher(ahash::RandomState::new());
+    let hasher = RecHasher::new(ahash::RandomState::new());
 
     group.bench_function("find_split_seed", |b| {
         b.iter_batched(

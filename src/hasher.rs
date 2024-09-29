@@ -1,9 +1,23 @@
-use std::hash::{BuildHasher, Hash, Hasher};
+use std::{cell::Cell, hash::{BuildHasher, Hash, Hasher}};
 
 use crate::{recsplit::MAX_LEAF_SIZE, splitting_tree::SplittingTree};
 
 #[derive(Debug)]
-pub struct RecHasher<H: BuildHasher>(pub H);
+pub struct RecHasher<H: BuildHasher> {
+    pub hasher: H,
+    #[cfg(feature = "debug_output")]
+    pub num_hash_evals: Cell<usize>,
+}
+
+impl<H: BuildHasher> RecHasher<H> {
+    pub fn new(hasher: H) -> Self {
+        Self {
+            hasher,
+            #[cfg(feature = "debug_output")]
+            num_hash_evals: Cell::new(0),
+        }
+    }
+}
 
 type HashVal = u64;
 
@@ -80,11 +94,11 @@ impl<H: BuildHasher> RecHasher<H> {
                 //     crate::debug!("finding seed: iteration {i}");
                 // }
 
-                if max_child_size == 1 {
-                    BIJECTIONS_CHECKED.set(BIJECTIONS_CHECKED.get() + 1);
-                } else {
-                    SPLITS_CHECKED.set(SPLITS_CHECKED.get() + 1);
-                }
+                // if max_child_size == 1 {
+                //     BIJECTIONS_CHECKED.set(BIJECTIONS_CHECKED.get() + 1);
+                // } else {
+                //     SPLITS_CHECKED.set(SPLITS_CHECKED.get() + 1);
+                // }
             }
 
             if self.is_split(i, max_child_size, values) {
@@ -129,7 +143,7 @@ impl<H: BuildHasher> RecHasher<H> {
         max_child_size: usize,
         value: &impl Hash,
     ) -> usize {
-        let mut hasher = self.0.build_hasher();
+        let mut hasher = self.hasher.build_hasher();
 
         hasher.write_usize(seed);
         value.hash(&mut hasher);
@@ -146,8 +160,8 @@ impl<H: BuildHasher> RecHasher<H> {
 
         debug_assert!(size <= u32::BITS as usize);
 
-        #[cfg(feature = "debug_output")]
-        BIJECTIONS_CHECKED.set(BIJECTIONS_CHECKED.get() + 1);
+        // #[cfg(feature = "debug_output")]
+        // BIJECTIONS_CHECKED.set(BIJECTIONS_CHECKED.get() + 1);
 
         let mut child_sizes: u32 = 0;
 
@@ -192,7 +206,7 @@ impl<H: BuildHasher> RecHasher<H> {
 
     /// hashes into `0..size`
     pub fn hash_bijection(&self, seed: usize, size: usize, value: &impl Hash) -> usize {
-        let mut hasher = self.0.build_hasher();
+        let mut hasher = self.hasher.build_hasher();
 
         hasher.write_usize(seed);
         value.hash(&mut hasher);
@@ -205,7 +219,7 @@ impl<H: BuildHasher> RecHasher<H> {
 
     /// Hashing for initial bucket assignment. Tries to be independent from [`hash_to_child`] to avoid correlation, thus hashes twice.
     pub fn hash_to_bucket(&self, num_buckets: usize, value: &impl Hash) -> usize {
-        let mut hasher = self.0.build_hasher();
+        let mut hasher = self.hasher.build_hasher();
         value.hash(&mut hasher);
         value.hash(&mut hasher);
         let hash = hasher.finish() as usize;
@@ -225,7 +239,7 @@ impl<H: BuildHasher> RecHasher<H> {
         }
 
         #[cfg(feature = "debug_output")]
-        HASH_EVALS.with(|v| v.set(v.get() + values.len()));
+        self.num_hash_evals.set(self.num_hash_evals.get() + values.len());
 
         child_sizes[0] == size >> 1
     }
@@ -265,7 +279,7 @@ impl<H: BuildHasher> RecHasher<H> {
         }
 
         #[cfg(feature = "debug_output")]
-        HASH_EVALS.with(|v| v.set(v.get() + values.len()));
+        self.num_hash_evals.set(self.num_hash_evals.get() + values.len());
 
         child_sizes[0] == 1 << size.ilog2()
     }
@@ -279,7 +293,7 @@ impl<H: BuildHasher> RecHasher<H> {
     }
 
     fn hash(&self, seed: usize, value: HashVal) -> u64 {
-        let mut hasher = self.0.build_hasher();
+        let mut hasher = self.hasher.build_hasher();
 
         hasher.write_u64(seed as u64 ^ value);
 
@@ -287,16 +301,6 @@ impl<H: BuildHasher> RecHasher<H> {
     }
 }
 
-#[cfg(feature = "debug_output")]
-thread_local! {
-    /// Warning: thread_local!
-    pub static SPLITS_CHECKED: std::cell::Cell<usize> = const {std::cell::Cell::new(0)};
-    /// Warning: thread_local!
-    pub static BIJECTIONS_CHECKED: std::cell::Cell<usize> = const {std::cell::Cell::new(0)};
-
-    pub static HASH_EVALS: std::cell::Cell<usize> = const {std::cell::Cell::new(0)};
-
-}
 
 #[inline(always)]
 fn fast_div(a: usize, b: usize) -> usize {
@@ -357,7 +361,7 @@ mod test {
 
     #[test]
     fn test_find_split() {
-        let hasher = RecHasher(ahash::RandomState::new());
+        let hasher = RecHasher::new(ahash::RandomState::new());
         for split in 2..=4 {
             println!("split in {split} parts");
             let size = 36;
@@ -381,7 +385,7 @@ mod test {
 
     #[test]
     fn test_find_bijection() {
-        let hasher = RecHasher(ahash::RandomState::new());
+        let hasher = RecHasher::new(ahash::RandomState::new());
 
         let size = 12;
 
@@ -407,7 +411,7 @@ mod test {
 
     #[test]
     fn test_hash_child() {
-        let hasher = RecHasher(ahash::RandomState::new());
+        let hasher = RecHasher::new(ahash::RandomState::new());
         for size in 1..100 {
             for max_child_size in 1..size {
                 for value in 0..100 {
@@ -422,7 +426,7 @@ mod test {
 
     #[test]
     fn test_hash_binary() {
-        let hasher = RecHasher(ahash::RandomState::new());
+        let hasher = RecHasher::new(ahash::RandomState::new());
         let mut nums = [0; 2];
         for i in 0..1000 {
             let hash = hasher.hash_binary(101010, i);
@@ -433,7 +437,7 @@ mod test {
 
     #[test]
     fn test_is_binary_split() {
-        let hasher = RecHasher(ahash::RandomState::new());
+        let hasher = RecHasher::new(ahash::RandomState::new());
         let size = 100;
         let values = (0u64..size).collect::<Vec<_>>();
         // let values = values.iter().collect::<Vec<_>>();

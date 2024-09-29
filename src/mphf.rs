@@ -45,7 +45,7 @@ impl<'a, T: Hash + 'a> SrsMphf<T> {
         let mut result = 0;
         let mut cumulative_bits = 0.;
 
-        let value = self.hasher.0.hash_one(value);
+        let value = self.hasher.hasher.hash_one(value);
 
         let log_size = self.size.next_power_of_two().ilog2();
 
@@ -163,7 +163,7 @@ impl<H: BuildHasher> MphfBuilder<H> {
         Self {
             overhead,
             data,
-            hasher: RecHasher(random_state),
+            hasher: RecHasher::new(random_state),
             information: BitVec::EMPTY,
             #[cfg(feature = "debug_output")]
             stats: (),
@@ -606,7 +606,7 @@ mod test {
     fn hash_evals_size() {
         use rayon::iter::{ParallelBridge, ParallelIterator};
 
-        use crate::hasher::HASH_EVALS;
+
         let overhead = 0.01;
 
         (10_000..=1_000_000)
@@ -619,9 +619,8 @@ mod test {
                 let mut bpk = 0.;
                 for _ in 0..samples {
                     let data = gen_input::<1>(size);
-                    HASH_EVALS.set(0);
                     let mphf = SrsMphf::new(&data, overhead);
-                    evals += HASH_EVALS.get();
+                    evals += mphf.hasher.num_hash_evals.get();
 
                     bpk += mphf.bit_per_key();
                 }
@@ -639,7 +638,6 @@ mod test {
     fn hash_evals_overhead() {
         use rayon::iter::{ParallelBridge, ParallelIterator};
 
-        use crate::hasher::HASH_EVALS;
         let size = 100_000;
 
         (1..=100)
@@ -651,9 +649,9 @@ mod test {
                 let mut bpk = 0.;
                 for _ in 0..samples {
                     let data = gen_input::<1>(size);
-                    HASH_EVALS.set(0);
+                   
                     let mphf = SrsMphf::new(&data, overhead);
-                    evals += HASH_EVALS.get();
+                    evals += mphf.hasher.num_hash_evals.get();
 
                     bpk += mphf.bit_per_key();
                 }
