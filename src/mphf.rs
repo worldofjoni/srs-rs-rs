@@ -640,8 +640,8 @@ mod test {
 
         let size = 100_000;
 
-        (1..=100)
-            .map(|i| i as f64 / 1000.)
+        (1..=50)
+            .map(|i| 0.02 / i as f64 )
             .par_bridge()
             .for_each(|overhead| {
                 let samples = 50;
@@ -650,7 +650,7 @@ mod test {
                 for _ in 0..samples {
                     let data = gen_input::<1>(size);
                    
-                    let mphf = SrsMphf::new(&data, overhead);
+                    let mphf: SrsMphf<[usize; 1]> = SrsMphf::new(&data, overhead);
                     evals += mphf.hasher.num_hash_evals.get();
 
                     bpk += mphf.bit_per_key();
