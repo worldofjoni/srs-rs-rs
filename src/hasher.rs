@@ -76,9 +76,9 @@ impl<H: BuildHasher> RecHasher<H> {
         for i in 0..usize::MAX {
             #[cfg(feature = "debug_output")]
             {
-                if i % 10000 == 0 && i != 0 {
-                    crate::debug!("finding seed: iteration {i}");
-                }
+                // if i % 10000 == 0 && i != 0 {
+                //     crate::debug!("finding seed: iteration {i}");
+                // }
 
                 if max_child_size == 1 {
                     BIJECTIONS_CHECKED.set(BIJECTIONS_CHECKED.get() + 1);
@@ -88,12 +88,12 @@ impl<H: BuildHasher> RecHasher<H> {
             }
 
             if self.is_split(i, max_child_size, values) {
-                #[cfg(feature = "debug_output")]
-                println!(
-                    "hashes until success: {i}, leaf: {}, size: {}",
-                    max_child_size == 1,
-                    values.len()
-                );
+                // #[cfg(feature = "debug_output")]
+                // println!(
+                //     "hashes until success: {i}, leaf: {}, size: {}",
+                //     max_child_size == 1,
+                //     values.len()
+                // );
                 return i;
             }
         }

@@ -102,6 +102,30 @@ fn create_many_sizes(c: &mut Criterion) {
     group.finish();
 }
 
+fn create_many_similar_sizes(c: &mut Criterion) {
+    let mut group = c.benchmark_group("crate multiple mphf with different sizes");
+    group.measurement_time(Duration::from_secs(3));
+    group.sample_size(10);
+
+    const OVERHEAD: f64 = 0.1;
+
+    for size in (10_000..100_000).step_by(10_000) {
+        group.warm_up_time(Duration::from_millis(1));
+        group.throughput(criterion::Throughput::Elements(size));
+        group.bench_function(BenchmarkId::from_parameter(size), |b| {
+            b.iter_batched(
+                || gen_input::<1>(size as usize),
+                |input| {
+                    SrsMphf::new(&input, OVERHEAD);
+                },
+                criterion::BatchSize::LargeInput,
+            )
+        });
+    }
+
+    group.finish();
+}
+
 fn create_many_eps(c: &mut Criterion) {
     let mut group = c.benchmark_group("crate multiple mphfs with different overheads");
     group.measurement_time(Duration::from_secs(10));
@@ -189,7 +213,6 @@ fn different_hashers(c: &mut Criterion) {
     let random = random();
     // group.sample_size(10);
 
-    
     // todo compere on different datatype sizes
     const WORDS: usize = 1;
 
@@ -301,5 +324,6 @@ criterion_group!(
     hash,
     different_hashers,
     pareto,
+    create_many_similar_sizes,
 );
 criterion_main!(benches);

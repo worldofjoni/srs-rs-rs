@@ -183,19 +183,19 @@ impl<H: BuildHasher> MphfBuilder<H> {
             if self.srs_search_iterative(root_seed, &mut stack) {
                 self.information[..Word::BITS as usize].store_be(root_seed);
 
-                #[cfg(feature = "debug_output")]
-                println!(
-                    "data: {} bit, {} per key, {} bit 'unused', {} per key therewith \n\t{}",
-                    self.information.len(),
-                    self.information.len() as f64 / self.data.len() as f64,
-                    self.information.first_one().unwrap(),
-                    (self.information.len() - self.information.first_one().unwrap()) as f64
-                        / self.data.len() as f64,
-                    self.information
-                        .iter()
-                        .map(|b| usize::from(*b).to_string())
-                        .collect::<String>()
-                );
+                // #[cfg(feature = "debug_output")]
+                // println!(
+                //     "data: {} bit, {} per key, {} bit 'unused', {} per key therewith \n\t{}",
+                //     self.information.len(),
+                //     self.information.len() as f64 / self.data.len() as f64,
+                //     self.information.first_one().unwrap(),
+                //     (self.information.len() - self.information.first_one().unwrap()) as f64
+                //         / self.data.len() as f64,
+                //     self.information
+                //         .iter()
+                //         .map(|b| usize::from(*b).to_string())
+                //         .collect::<String>()
+                // );
                 return SrsMphf {
                     size: self.data.len(),
                     _phantom: PhantomData,
@@ -604,56 +604,66 @@ mod test {
     #[test]
     #[cfg(feature = "debug_output")]
     fn hash_evals_size() {
+        use rayon::iter::{ParallelBridge, ParallelIterator};
+
         use crate::hasher::HASH_EVALS;
         let overhead = 0.01;
 
-        for size in (10_000..=100_000).step_by(10_000) {
-            let samples = 10;
+        (10_000..=1_000_000)
+            .step_by(100_000)
+            .par_bridge()
+            .for_each(|size| {
+                let samples = 1000;
 
-            let mut evals = 0;
-            let mut bpk = 0.;
-            for _ in 0..samples {
-                let data = gen_input::<1>(size);
-                HASH_EVALS.set(0);
-                let mphf = SrsMphf::new(&data, overhead);
-                evals += HASH_EVALS.get();
+                let mut evals = 0;
+                let mut bpk = 0.;
+                for _ in 0..samples {
+                    let data = gen_input::<1>(size);
+                    HASH_EVALS.set(0);
+                    let mphf = SrsMphf::new(&data, overhead);
+                    evals += HASH_EVALS.get();
 
-                bpk += mphf.bit_per_key();
-            }
+                    bpk += mphf.bit_per_key();
+                }
 
-            println!(
-                "RESULT-hash_evals_size {size}, {overhead}, {evals}, {real_overhead}",
-                evals = evals as f64 / samples as f64,
-                real_overhead = bpk / samples as f64 - E.log2()
-            );
-        }
+                println!(
+                    "RESULT-hash_evals_size {size}, {overhead}, {evals}, {real_overhead}",
+                    evals = evals as f64 / samples as f64,
+                    real_overhead = bpk / samples as f64 - E.log2()
+                );
+            });
     }
 
     #[test]
     #[cfg(feature = "debug_output")]
     fn hash_evals_overhead() {
+        use rayon::iter::{ParallelBridge, ParallelIterator};
+
         use crate::hasher::HASH_EVALS;
         let size = 100_000;
 
-        for overhead in [1., 0.5, 0.1, 0.05, 0.01, 0.005, 0.001] {
-            let samples = 10;
-            let mut evals = 0;
-            let mut bpk = 0.;
-            for _ in 0..samples {
-                let data = gen_input::<1>(size);
-                HASH_EVALS.set(0);
-                let mphf = SrsMphf::new(&data, overhead);
-                evals += HASH_EVALS.get();
+        (1..=100)
+            .map(|i| i as f64 / 1000.)
+            .par_bridge()
+            .for_each(|overhead| {
+                let samples = 50;
+                let mut evals = 0;
+                let mut bpk = 0.;
+                for _ in 0..samples {
+                    let data = gen_input::<1>(size);
+                    HASH_EVALS.set(0);
+                    let mphf = SrsMphf::new(&data, overhead);
+                    evals += HASH_EVALS.get();
 
-                bpk += mphf.bit_per_key();
-            }
+                    bpk += mphf.bit_per_key();
+                }
 
-            println!(
-                "RESULT-hash_evals_overhead {size}, {overhead}, {evals}, {real_overhead}",
-                evals = evals as f64 / samples as f64,
-                real_overhead = bpk / samples as f64 - E.log2()
-            );
-        }
+                println!(
+                    "RESULT-hash_evals_overhead {size}, {overhead}, {evals}, {real_overhead}",
+                    evals = evals as f64 / samples as f64,
+                    real_overhead = bpk / samples as f64 - E.log2()
+                );
+            });
     }
 
     #[test]
