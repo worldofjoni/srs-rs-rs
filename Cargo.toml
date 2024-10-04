@@ -4,7 +4,7 @@ authors = ["Jonatan Ziegler"]
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "minimal perfect hash function using near minimal space"
+description = "Minimal Perfect Hash Function using Symbiotic Random Search"
 repository = "https://github.com/worldofjoni/RecSplit"
 keywords = [
     "mphf",
@@ -14,7 +14,7 @@ keywords = [
     "brute force",
     "random seach",
     "srs",
-    "recsplit"
+    "recsplit",
 ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -23,7 +23,7 @@ keywords = [
 bitvec = "1.0.1"
 wyhash2 = "0.2.1"
 partition = "0.1.2"
-cxx = { version = "1.0.126", optional = true }
+cxx = { version = "1.0.128", optional = true }
 indicatif = { version = "0.17.8", optional = true }
 # static_assertions = "1.1.0"
 

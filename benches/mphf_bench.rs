@@ -162,7 +162,7 @@ fn hash(c: &mut Criterion) {
         group.bench_function(BenchmarkId::from_parameter(size.ilog2()), |b| {
             let data = &(0..size).collect::<Vec<_>>();
             let mphf = SrsRecSplit::new(data, overhead);
-            b.iter_batched(random, |i| mphf.hash(&i), criterion::BatchSize::SmallInput)
+            b.iter_batched(random, |i| mphf.query(&i), criterion::BatchSize::SmallInput)
         });
     }
 }

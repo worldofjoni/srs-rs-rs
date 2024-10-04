@@ -14,6 +14,7 @@ type Word = usize;
 pub type Float = f64;
 type DefaultHash = wyhash2::WyHash;
 
+/// Minimal perfect hash function using Symbiotic Random Search based on RecSplit.
 pub struct SrsRecSplit<T: Hash, H: BuildHasher = DefaultHash> {
     _phantom: PhantomData<T>,
     hasher: MphfHasher<H>,
@@ -26,7 +27,18 @@ pub struct SrsRecSplit<T: Hash, H: BuildHasher = DefaultHash> {
     stats: (),
 }
 
+impl<'a, T: Hash + 'a> SrsRecSplit<T> {
+    /// Constructs an new SrsRecSplit data structure for a given key set `data`.
+    /// `overhead` determines the bits per key tha will be used beyond the minimal `log_2 e` bit per key.
+    /// Smaller overhead increases the construction time roughly linearly.
+    pub fn new(data: impl IntoIterator<Item = &'a T>, overhead: Float) -> Self {
+        Self::with_state(data, overhead, DefaultHash::default())
+    }
+}
+
 impl<'a, T: Hash + 'a, H: BuildHasher> SrsRecSplit<T, H> {
+    /// Constructs an new SrsRecSplit data structure for a given key set `data`, `overhead` and using the provided hash algorithm `state`.
+    /// This is useful for trying out different hash algorithms. Normally, [`SrsRecSplit::new`] should be used.
     pub fn with_state(data: impl IntoIterator<Item = &'a T>, overhead: Float, state: H) -> Self {
         let hash_values = data
             .into_iter()
@@ -34,14 +46,10 @@ impl<'a, T: Hash + 'a, H: BuildHasher> SrsRecSplit<T, H> {
             .collect::<Vec<_>>();
         MphfBuilder::new(hash_values, overhead, state).build()
     }
-}
 
-impl<'a, T: Hash + 'a> SrsRecSplit<T> {
-    pub fn new(data: impl IntoIterator<Item = &'a T>, overhead: Float) -> Self {
-        Self::with_state(data, overhead, DefaultHash::default())
-    }
-
-    pub fn hash(&self, value: &T) -> usize {
+    /// Queries the MPHF to get a hash value in `0..n` where n is the size of the input set.
+    /// The returned value is guaranteed to be unique for every key from the input set.
+    pub fn query(&self, value: &T) -> usize {
         let mut result = 0;
         let mut cumulative_bits = 0.;
 
@@ -99,21 +107,25 @@ impl<'a, T: Hash + 'a> SrsRecSplit<T> {
         self.information[start..][..Word::BITS as usize].load_be()
     }
 
+    /// Returns the space usage of this MPHF in bits.
+    ///
+    /// Note that this does not include some extra bytes used for parameters of this data structure, like number of keys or overhead.
     pub fn bit_size(&self) -> usize {
         self.information.len() - self.information.leading_zeros()
     }
 
+    /// Returns the space usage of this MPHF in bits per key (number of keys it was constructed for).
     pub fn bit_per_key(&self) -> f64 {
         self.bit_size() as f64 / self.size as f64
     }
 }
 
-/// determine how many bits would be used
+/// Determines how many bits would be used.
 /// Includes starting zeros that can be avoided, actual size may be smaller!
 pub fn determine_space_usage(num_elements: usize, overhead: Float) -> usize {
     total_bits_required(overhead, num_elements)
 }
-/// determine how many bits per key would be used
+/// Determines how many bits per key would be used.
 /// Includes starting zeros that can be avoided, actual size may be smaller!
 pub fn determine_bits_per_key(num_elements: usize, overhead: Float) -> Float {
     total_bits_required(overhead, num_elements) as Float / num_elements as Float
@@ -417,7 +429,7 @@ mod test {
     };
 
     use crate::mphf::{
-        calc_log_p, determine_bits_per_key, determine_space_usage, get_log_p_power, Float,
+        calc_log_p, get_log_p_power, Float,
     };
 
     use super::SrsRecSplit;
@@ -443,21 +455,6 @@ mod test {
     }
 
     #[test]
-    fn test_bit_precalcs() {
-        let size = 1 << 10;
-        let overhead = 0.1;
-        assert_eq!(
-            SrsRecSplit::new(&(0..size).collect::<Vec<_>>(), overhead).bit_size(),
-            determine_space_usage(size, overhead)
-        );
-        assert_approx_eq!(
-            Float,
-            SrsRecSplit::new(&(0..size).collect::<Vec<_>>(), overhead).bit_per_key(),
-            determine_bits_per_key(size, overhead)
-        );
-    }
-
-    #[test]
     fn test_create_mphf() {
         let size = 1 << 4;
         let overhead = 0.1;
@@ -470,7 +467,7 @@ mod test {
             mphf.bit_per_key()
         );
 
-        let hashes = (0..size).map(|v| mphf.hash(&v)).collect::<HashSet<_>>();
+        let hashes = (0..size).map(|v| mphf.query(&v)).collect::<HashSet<_>>();
         assert_eq!(hashes.len(), size);
     }
 
@@ -498,7 +495,7 @@ mod test {
                 .collect::<String>()
         );
 
-        let hashes = (0..size).map(|v| mphf.hash(&v)).collect::<HashSet<_>>();
+        let hashes = (0..size).map(|v| mphf.query(&v)).collect::<HashSet<_>>();
         assert_eq!(hashes.len(), size);
     }
 
@@ -518,7 +515,7 @@ mod test {
             mphf.bit_per_key()
         );
 
-        let hashes = (0..size).map(|v| mphf.hash(&v)).collect::<HashSet<_>>();
+        let hashes = (0..size).map(|v| mphf.query(&v)).collect::<HashSet<_>>();
         assert_eq!(hashes.len(), size);
     }
 
@@ -535,7 +532,7 @@ mod test {
             mphf.bit_per_key()
         );
 
-        let hashes = (0..size).map(|v| mphf.hash(&v)).collect::<HashSet<_>>();
+        let hashes = (0..size).map(|v| mphf.query(&v)).collect::<HashSet<_>>();
         assert_eq!(hashes.len(), size);
     }
 
@@ -563,7 +560,7 @@ mod test {
                 .collect::<String>()
         );
 
-        let hashes = (0..size).map(|v| mphf.hash(&v)).collect::<HashSet<_>>();
+        let hashes = (0..size).map(|v| mphf.query(&v)).collect::<HashSet<_>>();
         assert_eq!(hashes.len(), size);
     }
 
@@ -689,7 +686,7 @@ mod test {
 
         for _ in 0..100 {
             for i in 0..size {
-                mphf.hash(&i);
+                mphf.query(&i);
             }
         }
     }

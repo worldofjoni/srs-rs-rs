@@ -3,33 +3,34 @@ use cxx::CxxString;
 
 use cxx::CxxVector;
 
-#[cxx::bridge(namespace = "srs")]
+#[cxx::bridge(namespace = "srs_rs_rs")]
 mod ffi {
     extern "Rust" {
-        type SrsMphf;
-        fn constructSrsMphf(data: &CxxVector<CxxString>, overhead: f64) -> Box<SrsMphf>;
-        fn hash(&self, value: &CxxString) -> usize;
+        type SrsRecSplit;
+        fn constructSrsRecSplit(data: &CxxVector<CxxString>, overhead: f64) -> Box<SrsRecSplit>;
+        fn query(&self, value: &CxxString) -> usize;
         fn getBits(&self) -> usize;
         fn getBitsPerKey(&self) -> f64;
     }
 }
 
+struct SrsRecSplit(Box<crate::mphf::SrsRecSplit<CxxString>>);
 
-struct SrsMphf(Box<crate::mphf::SrsMphf<CxxString>>);
-
-fn constructSrsMphf(data: &CxxVector<CxxString>, overhead: f64) -> Box<SrsMphf> {
-    Box::new(SrsMphf(Box::new(crate::mphf::SrsMphf::new(data, overhead))))
+fn constructSrsRecSplit(data: &CxxVector<CxxString>, overhead: f64) -> Box<SrsRecSplit> {
+    Box::new(SrsRecSplit(Box::new(crate::mphf::SrsRecSplit::new(
+        data, overhead,
+    ))))
 }
 
-impl SrsMphf {
-    fn hash(&self, value: &CxxString) -> usize {
-        self.0.hash(value)
+impl SrsRecSplit {
+    fn query(&self, value: &CxxString) -> usize {
+        self.0.query(value)
     }
 
     fn getBits(&self) -> usize {
         self.0.bit_size()
     }
-    
+
     fn getBitsPerKey(&self) -> f64 {
         self.0.bit_per_key()
     }

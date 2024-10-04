@@ -3,7 +3,7 @@ flamegraph.svg
 .vscode
 out
 asm
-srs_mphf.*
+srs_recsplit.*
 
 perf.data*
 *.perf
