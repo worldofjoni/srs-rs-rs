@@ -8,15 +8,15 @@ use std::{
 use bitvec::{field::BitField, order::Msb0, vec::BitVec};
 use partition::partition_index;
 
-use crate::RecHasher;
+use crate::hasher::MphfHasher;
 
 type Word = usize;
 pub type Float = f64;
 type DefaultHash = wyhash2::WyHash;
 
-pub struct SrsMphf<T: Hash, H: BuildHasher = DefaultHash> {
+pub struct SrsRecSplit<T: Hash, H: BuildHasher = DefaultHash> {
     _phantom: PhantomData<T>,
-    hasher: RecHasher<H>,
+    hasher: MphfHasher<H>,
     /// includes root seed
     information: BitVec<Word, Msb0>,
     size: usize,
@@ -26,7 +26,7 @@ pub struct SrsMphf<T: Hash, H: BuildHasher = DefaultHash> {
     stats: (),
 }
 
-impl<'a, T: Hash + 'a, H: BuildHasher> SrsMphf<T, H> {
+impl<'a, T: Hash + 'a, H: BuildHasher> SrsRecSplit<T, H> {
     pub fn with_state(data: impl IntoIterator<Item = &'a T>, overhead: Float, state: H) -> Self {
         let hash_values = data
             .into_iter()
@@ -36,7 +36,7 @@ impl<'a, T: Hash + 'a, H: BuildHasher> SrsMphf<T, H> {
     }
 }
 
-impl<'a, T: Hash + 'a> SrsMphf<T> {
+impl<'a, T: Hash + 'a> SrsRecSplit<T> {
     pub fn new(data: impl IntoIterator<Item = &'a T>, overhead: Float) -> Self {
         Self::with_state(data, overhead, DefaultHash::default())
     }
@@ -110,12 +110,12 @@ impl<'a, T: Hash + 'a> SrsMphf<T> {
 
 /// determine how many bits would be used
 /// Includes starting zeros that can be avoided, actual size may be smaller!
-pub fn determine_mvp_space_usage(num_elements: usize, overhead: Float) -> usize {
+pub fn determine_space_usage(num_elements: usize, overhead: Float) -> usize {
     total_bits_required(overhead, num_elements)
 }
 /// determine how many bits per key would be used
 /// Includes starting zeros that can be avoided, actual size may be smaller!
-pub fn determine_mvp_bits_per_key(num_elements: usize, overhead: Float) -> Float {
+pub fn determine_bits_per_key(num_elements: usize, overhead: Float) -> Float {
     total_bits_required(overhead, num_elements) as Float / num_elements as Float
 }
 
@@ -123,7 +123,7 @@ pub struct MphfBuilder<H: BuildHasher> {
     data: Vec<u64>,
     /// extra bits per task: overhead=log(1+eps)
     overhead: Float,
-    hasher: RecHasher<H>,
+    hasher: MphfHasher<H>,
     information: BitVec<Word, Msb0>,
     #[cfg(feature = "debug_output")]
     stats: (),
@@ -163,7 +163,7 @@ impl<H: BuildHasher> MphfBuilder<H> {
         Self {
             overhead,
             data,
-            hasher: RecHasher::new(random_state),
+            hasher: MphfHasher::new(random_state),
             information: BitVec::EMPTY,
             #[cfg(feature = "debug_output")]
             stats: (),
@@ -174,7 +174,7 @@ impl<H: BuildHasher> MphfBuilder<H> {
         }
     }
 
-    pub fn build<T: Hash>(mut self) -> SrsMphf<T, H> {
+    pub fn build<T: Hash>(mut self) -> SrsRecSplit<T, H> {
         let total_bits = total_bits_required(self.overhead, self.data.len());
         self.information.resize(total_bits, false);
 
@@ -196,7 +196,7 @@ impl<H: BuildHasher> MphfBuilder<H> {
                 //         .map(|b| usize::from(*b).to_string())
                 //         .collect::<String>()
                 // );
-                return SrsMphf {
+                return SrsRecSplit {
                     size: self.data.len(),
                     _phantom: PhantomData,
                     hasher: self.hasher,
@@ -377,13 +377,11 @@ fn targeted_bits_for_size(size: usize, overhead: Float) -> Float {
         + if size.is_power_of_two() {
             -get_log_p_power(size.ilog2())
         } else {
-            // todo correct overhead scaling?
             -get_log_p_uneven(size)
         })
     .min(max) // todo shout out when max is applied because this effectively means space is wasted...
 }
 
-// todo more exact stirling?
 fn get_log_p_uneven(size: usize) -> Float {
     let r = (1 << size.ilog2()) as Float;
     let q = r / size as Float;
@@ -419,10 +417,10 @@ mod test {
     };
 
     use crate::mphf::{
-        calc_log_p, determine_mvp_bits_per_key, determine_mvp_space_usage, get_log_p_power, Float,
+        calc_log_p, determine_bits_per_key, determine_space_usage, get_log_p_power, Float,
     };
 
-    use super::SrsMphf;
+    use super::SrsRecSplit;
 
     #[test]
     fn test_calc_log_p() {
@@ -449,13 +447,13 @@ mod test {
         let size = 1 << 10;
         let overhead = 0.1;
         assert_eq!(
-            SrsMphf::new(&(0..size).collect::<Vec<_>>(), overhead).bit_size(),
-            determine_mvp_space_usage(size, overhead)
+            SrsRecSplit::new(&(0..size).collect::<Vec<_>>(), overhead).bit_size(),
+            determine_space_usage(size, overhead)
         );
         assert_approx_eq!(
             Float,
-            SrsMphf::new(&(0..size).collect::<Vec<_>>(), overhead).bit_per_key(),
-            determine_mvp_bits_per_key(size, overhead)
+            SrsRecSplit::new(&(0..size).collect::<Vec<_>>(), overhead).bit_per_key(),
+            determine_bits_per_key(size, overhead)
         );
     }
 
@@ -465,7 +463,7 @@ mod test {
         let overhead = 0.1;
         let data = (0..size).collect::<Vec<_>>();
 
-        let mphf = SrsMphf::new(&data, overhead);
+        let mphf = SrsRecSplit::new(&data, overhead);
         println!(
             "done building! uses {} bits, {} per key",
             mphf.bit_size(),
@@ -483,7 +481,7 @@ mod test {
         let data: Vec<usize> = (0..size).collect::<Vec<_>>();
 
         let start = time::Instant::now();
-        let mphf = SrsMphf::new(&data, overhead);
+        let mphf = SrsRecSplit::new(&data, overhead);
         let took = start.elapsed();
 
         println!(
@@ -511,7 +509,7 @@ mod test {
         let data = (0..size).collect::<Vec<_>>();
 
         let start = time::Instant::now();
-        let mphf = SrsMphf::new(&data, overhead);
+        let mphf = SrsRecSplit::new(&data, overhead);
         let took = start.elapsed();
         println!(
             "done building in {:?}! uses {} bits, {} per key",
@@ -530,7 +528,7 @@ mod test {
         let overhead = 0.5; // attention: this is _larger_ than for the other tests!
         let data = (0..size).collect::<Vec<_>>();
 
-        let mphf = SrsMphf::new(&data, overhead);
+        let mphf = SrsRecSplit::new(&data, overhead);
         println!(
             "done building! uses {} bits, {} per key",
             mphf.bit_size(),
@@ -548,7 +546,7 @@ mod test {
         let data: Vec<usize> = (0..size).collect::<Vec<_>>();
 
         let start = time::Instant::now();
-        let mphf = SrsMphf::new(&data, overhead);
+        let mphf = SrsRecSplit::new(&data, overhead);
         let took = start.elapsed();
 
         println!(
@@ -586,7 +584,7 @@ mod test {
 
         for overhead in [1., 0.5, 0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001] {
             let start = time::Instant::now();
-            let mphf = black_box(SrsMphf::new(&input, overhead));
+            let mphf = black_box(SrsRecSplit::new(&input, overhead));
             let took = start.elapsed();
             println!(
                 "param {overhead}, bpk {}, took {took:?}",
@@ -606,7 +604,6 @@ mod test {
     fn hash_evals_size() {
         use rayon::iter::{ParallelBridge, ParallelIterator};
 
-
         let overhead = 0.01;
 
         (10_000..=1_000_000)
@@ -619,7 +616,7 @@ mod test {
                 let mut bpk = 0.;
                 for _ in 0..samples {
                     let data = gen_input::<1>(size);
-                    let mphf = SrsMphf::new(&data, overhead);
+                    let mphf = SrsRecSplit::new(&data, overhead);
                     evals += mphf.hasher.num_hash_evals.get();
 
                     bpk += mphf.bit_per_key();
@@ -641,7 +638,7 @@ mod test {
         let size = 100_000;
 
         (1..=50)
-            .map(|i| 0.02 / i as f64 )
+            .map(|i| 0.02 / i as f64)
             .par_bridge()
             .for_each(|overhead| {
                 let samples = 50;
@@ -649,8 +646,8 @@ mod test {
                 let mut bpk = 0.;
                 for _ in 0..samples {
                     let data = gen_input::<1>(size);
-                   
-                    let mphf: SrsMphf<[usize; 1]> = SrsMphf::new(&data, overhead);
+
+                    let mphf: SrsRecSplit<[usize; 1]> = SrsRecSplit::new(&data, overhead);
                     evals += mphf.hasher.num_hash_evals.get();
 
                     bpk += mphf.bit_per_key();
@@ -668,7 +665,7 @@ mod test {
     #[ignore = "does not terminate"]
     fn test_fx_hash() {
         let input: [usize; 1024] = random();
-        SrsMphf::with_state(&input, 0.1, fxhash::FxBuildHasher::default());
+        SrsRecSplit::with_state(&input, 0.1, fxhash::FxBuildHasher::default());
     }
 
     #[test]
@@ -678,7 +675,7 @@ mod test {
         let overhead = 0.01;
         let data = (0..size).collect::<Vec<_>>();
 
-        SrsMphf::new(&data, overhead);
+        SrsRecSplit::new(&data, overhead);
     }
 
     #[test]
@@ -688,21 +685,11 @@ mod test {
         let overhead = 0.01;
         let data = (0..size).collect::<Vec<_>>();
 
-        let mphf = SrsMphf::new(&data, overhead);
+        let mphf = SrsRecSplit::new(&data, overhead);
 
         for _ in 0..100 {
             for i in 0..size {
                 mphf.hash(&i);
-            }
-        }
-    }
-
-    fn gen_input<const N: usize>(size: usize) -> Vec<[usize; N]> {
-        loop {
-            let mut data = vec![[0; N]; size];
-            data.iter_mut().for_each(|s| *s = random());
-            if data.iter().collect::<HashSet<_>>().len() == size {
-                return data;
             }
         }
     }

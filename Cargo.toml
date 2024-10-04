@@ -1,47 +1,46 @@
 [package]
-name = "srs"
+name = "srs-rs-rs"
 authors = ["Jonatan Ziegler"]
 version = "0.1.0"
 edition = "2021"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 description = "minimal perfect hash function using near minimal space"
 repository = "https://github.com/worldofjoni/RecSplit"
 keywords = [
-    "hashing",
     "mphf",
+    "hashing",
     "perfect-hash",
     "perfect",
     "brute force",
     "random seach",
+    "srs",
+    "recsplit"
 ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 bitvec = "1.0.1"
-cxx = { version = "1.0.126", optional = true }
-env_logger = "0.11.3"
-indicatif = { version = "0.17.8", optional = true }
-log = "0.4.21"
-rand = { version = "0.8.5", features = ["min_const_gen"] }
-rayon = "1.10.0"
-static_assertions = "1.1.0"
 wyhash2 = "0.2.1"
-ahash = "0.8.11"
 partition = "0.1.2"
+cxx = { version = "1.0.126", optional = true }
+indicatif = { version = "0.17.8", optional = true }
+# static_assertions = "1.1.0"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
-float-cmp = "0.9.0"
 gnuplot = "0.0.43"
-rand = "0.8.5"
-stacker = "0.1.15"
+rand = { version = "0.8.5", features = ["min_const_gen"] }
+rayon = "1.10.0"
+float-cmp = "0.10.0"
+
 
 # other hashers
 fxhash = "0.2.1"
 xxhash-rust = { version = "0.8.12", features = ["xxh64"] }
 wyhash = "0.5.0"
 wyhash-final4 = "0.2.1"
+ahash = "0.8.11"
 
 
 [features]
@@ -51,15 +50,6 @@ cpp_binds = ["dep:cxx"]
 
 [lib]
 crate-type = ["lib", "staticlib"]
-
-
-[[bench]]
-name = "rec_bench"
-harness = false
-
-[[bench]]
-name = "mvp_bench"
-harness = false
 
 [[bench]]
 name = "mphf_bench"

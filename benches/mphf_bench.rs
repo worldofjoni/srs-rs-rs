@@ -6,7 +6,7 @@ use rand::{
     distributions::{Alphanumeric, DistString},
     random,
 };
-use srs::mphf::{determine_mvp_bits_per_key, SrsMphf};
+use srs_rs_rs::mphf::{determine_bits_per_key, SrsRecSplit};
 
 fn create_mphf_single(c: &mut Criterion) {
     let mut group = c.benchmark_group("create single srs mphf (size = 1024)");
@@ -21,7 +21,7 @@ fn create_mphf_single(c: &mut Criterion) {
             b.iter_batched(
                 || gen_input::<1>(SIZE),
                 |input| {
-                    SrsMphf::new(input.as_slice(), OVERHEAD);
+                    SrsRecSplit::new(input.as_slice(), OVERHEAD);
                 },
                 criterion::BatchSize::LargeInput,
             )
@@ -46,7 +46,7 @@ fn create_mphf_single_uneven(c: &mut Criterion) {
         b.iter_batched(
             || gen_input::<1>(SIZE),
             |input| {
-                SrsMphf::new(input.as_slice(), OVERHEAD);
+                SrsRecSplit::new(input.as_slice(), OVERHEAD);
             },
             criterion::BatchSize::LargeInput,
         )
@@ -68,7 +68,7 @@ fn create_mphf_large(c: &mut Criterion) {
         b.iter_batched(
             || gen_input::<1>(SIZE),
             |input| {
-                SrsMphf::new(input.as_slice(), OVERHEAD);
+                SrsRecSplit::new(input.as_slice(), OVERHEAD);
             },
             criterion::BatchSize::LargeInput,
         )
@@ -92,7 +92,7 @@ fn create_many_sizes(c: &mut Criterion) {
             b.iter_batched(
                 || gen_input::<1>(size as usize),
                 |input| {
-                    SrsMphf::new(&input, OVERHEAD);
+                    SrsRecSplit::new(&input, OVERHEAD);
                 },
                 criterion::BatchSize::LargeInput,
             )
@@ -116,7 +116,7 @@ fn create_many_similar_sizes(c: &mut Criterion) {
             b.iter_batched(
                 || gen_input::<1>(size as usize),
                 |input| {
-                    SrsMphf::new(&input, OVERHEAD);
+                    SrsRecSplit::new(&input, OVERHEAD);
                 },
                 criterion::BatchSize::LargeInput,
             )
@@ -140,7 +140,7 @@ fn create_many_eps(c: &mut Criterion) {
             b.iter_batched(
                 || gen_input::<1>(SIZE),
                 |input| {
-                    SrsMphf::new(input.as_slice(), overhead);
+                    SrsRecSplit::new(input.as_slice(), overhead);
                 },
                 criterion::BatchSize::LargeInput,
             )
@@ -161,7 +161,7 @@ fn hash(c: &mut Criterion) {
 
         group.bench_function(BenchmarkId::from_parameter(size.ilog2()), |b| {
             let data = &(0..size).collect::<Vec<_>>();
-            let mphf = SrsMphf::new(data, overhead);
+            let mphf = SrsRecSplit::new(data, overhead);
             b.iter_batched(random, |i| mphf.hash(&i), criterion::BatchSize::SmallInput)
         });
     }
@@ -188,12 +188,12 @@ fn pareto(c: &mut Criterion) {
     group.throughput(criterion::Throughput::Elements(SIZE as u64));
     for overhead in [0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001] {
         group.bench_function(
-            BenchmarkId::new(SIZE.to_string(), determine_mvp_bits_per_key(SIZE, overhead)),
+            BenchmarkId::new(SIZE.to_string(), determine_bits_per_key(SIZE, overhead)),
             |b| {
                 b.iter_batched(
                     gen_input,
                     |input| {
-                        SrsMphf::new(&input, overhead);
+                        SrsRecSplit::new(&input, overhead);
                     },
                     criterion::BatchSize::LargeInput,
                 )
@@ -220,7 +220,7 @@ fn different_hashers(c: &mut Criterion) {
         b.iter_batched(
             || gen_input::<WORDS>(SIZE),
             |input| {
-                SrsMphf::with_state(
+                SrsRecSplit::with_state(
                     input.as_slice(),
                     overhead,
                     std::hash::RandomState::default(),
@@ -233,7 +233,7 @@ fn different_hashers(c: &mut Criterion) {
         b.iter_batched(
             || gen_input::<WORDS>(SIZE),
             |input| {
-                SrsMphf::with_state(
+                SrsRecSplit::with_state(
                     input.as_slice(),
                     overhead,
                     ahash::RandomState::with_seeds(random, random, random, random),
@@ -246,7 +246,7 @@ fn different_hashers(c: &mut Criterion) {
         b.iter_batched(
             || gen_input::<WORDS>(SIZE),
             |input| {
-                SrsMphf::with_state(
+                SrsRecSplit::with_state(
                     input.as_slice(),
                     overhead,
                     BuildHasherDefault::<wyhash::WyHash>::default(),
@@ -259,7 +259,7 @@ fn different_hashers(c: &mut Criterion) {
         b.iter_batched(
             || gen_input::<WORDS>(SIZE),
             |input| {
-                SrsMphf::with_state(input.as_slice(), overhead, wyhash2::WyHash::default());
+                SrsRecSplit::with_state(input.as_slice(), overhead, wyhash2::WyHash::default());
             },
             criterion::BatchSize::LargeInput,
         )
@@ -268,7 +268,7 @@ fn different_hashers(c: &mut Criterion) {
         b.iter_batched(
             || gen_input::<WORDS>(SIZE),
             |input| {
-                SrsMphf::with_state(
+                SrsRecSplit::with_state(
                     input.as_slice(),
                     overhead,
                     BuildHasherDefault::<wyhash_final4::generics::WyHasher<wyhash_final4::WyHash64>>::default(),
@@ -281,7 +281,7 @@ fn different_hashers(c: &mut Criterion) {
         b.iter_batched(
             || gen_input::<WORDS>(SIZE),
             |input| {
-                SrsMphf::with_state(
+                SrsRecSplit::with_state(
                     input.as_slice(),
                     overhead,
                     xxhash_rust::xxh64::Xxh64Builder::default(),
