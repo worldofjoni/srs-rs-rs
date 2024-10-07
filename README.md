@@ -2,7 +2,7 @@
 Implementation of SRS-RecSplit---a [minimal perfect hash function](https://en.wikipedia.org/wiki/Perfect_hash_function#Minimal_perfect_hash_function)---in Rust.
 SRS-RecSplit uses Symbiotic Random Search and the [RecSplit](https://arxiv.org/abs/1910.06416) idea to construct a minimal perfect hash function.
 
-| ⚠️   | Not yet production ready! |
+| ⚠️   | Not yet production ready! See [here](https://github.com/worldofjoni/srs-rs-rs/issues/4). |
 | --- | ------------------------- |
 
 ## Usage
